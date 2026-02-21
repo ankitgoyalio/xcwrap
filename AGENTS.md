@@ -2,6 +2,14 @@
 
 Fast, lightweight, AI-agent-friendly CLI for Xcode `.xc*` workflows. Built in Go.
 
+## Best Practice References
+
+Always refer to these repositories for implementation and CLI best practices:
+
+- <https://github.com/jesseduffield/lazygit.git>
+- <https://github.com/rudrankriyam/App-Store-Connect-CLI>
+- <https://github.com/cli/cli>
+
 ## Core Principles
 
 - Explicit flags: always prefer long-form flags (`--project`, `--output`, `--apply`) over short aliases.
