@@ -161,6 +161,19 @@ Do not mark work complete until all are true:
 - Document CI-friendly behavior and non-interactive guarantees.
 - Document destructive command safeguards clearly.
 
+## Issue Raising
+
+- When asked to raise a GitHub issue, always draft from `ISSUE.md`.
+- Every issue body must include these sections in order:
+  - `Summary`
+  - `Why`
+  - `Current gap in the code`
+  - `Proposed change`
+  - `Testing`
+  - `Validation command`
+  - `Acceptance Criteria`
+- Keep issue descriptions actionable and tied to specific files/lines when known.
+
 ## Environment Variables
 
 | Variable | Purpose |
