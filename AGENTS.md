@@ -73,6 +73,7 @@ Do not ship speculative or low-confidence heuristics in V1.
 ## Output Contract
 
 - Default stdout: minified JSON.
+- JSON field names must use camelCase.
 - Human output: `--output table` or `--output markdown`.
 - Errors must use a structured JSON envelope.
 - Flag validation and usage errors must return exit code `2`.
