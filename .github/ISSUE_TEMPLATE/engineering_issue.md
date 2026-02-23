@@ -1,4 +1,10 @@
-# <Issue Title>
+---
+name: Engineering issue
+about: Internal implementation-ready issue template for engineering work
+title: ''
+labels: ''
+assignees: ''
+---
 
 ## Summary
 
@@ -28,7 +34,7 @@
 
 ## Validation command
 
-```bash
+```fish
 # Replace with exact commands run locally
 go test ./...
 ```

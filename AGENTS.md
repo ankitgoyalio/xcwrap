@@ -164,7 +164,7 @@ Do not mark work complete until all are true:
 
 ## Issue Raising
 
-- When asked to raise a GitHub issue, always draft from `ISSUE.md`.
+- When asked to raise a GitHub issue, always draft from `.github/ISSUE_TEMPLATE/engineering_issue.md`.
 - Every issue body must include these sections in order:
   - `Summary`
   - `Why`
