@@ -202,7 +202,7 @@ func collectUsedAssets(root string, include []string, exclude []string, assetSet
 					case errCh <- err:
 					default:
 					}
-					return
+					continue
 				}
 
 				ext := strings.ToLower(filepath.Ext(path))

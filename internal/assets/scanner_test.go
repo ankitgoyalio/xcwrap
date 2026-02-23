@@ -3,7 +3,10 @@ package assets
 import (
 	"os"
 	"path/filepath"
+	"runtime"
+	"strconv"
 	"testing"
+	"time"
 )
 
 func TestScan_FindsUsedAndUnusedAssets(t *testing.T) {
@@ -300,5 +303,53 @@ func TestScan_FindsSwiftDotSymbolReference_ForDashedAssetNameCamelCase(t *testin
 	}
 	if len(res.UnusedAssets) != 0 {
 		t.Fatalf("unexpected unused assets: %#v", res.UnusedAssets)
+	}
+}
+
+func TestScan_ReadErrorDoesNotDeadlock(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("permission model differs on windows")
+	}
+
+	root := t.TempDir()
+	catalog := filepath.Join(root, "Assets.xcassets")
+	if err := os.MkdirAll(filepath.Join(catalog, "used.imageset"), 0o755); err != nil {
+		t.Fatalf("mkdir asset set: %v", err)
+	}
+
+	unreadable := filepath.Join(root, "000_unreadable.swift")
+	if err := os.WriteFile(unreadable, []byte(`let _ = UIImage(named: "used")`), 0o644); err != nil {
+		t.Fatalf("write unreadable source: %v", err)
+	}
+	if err := os.Chmod(unreadable, 0o000); err != nil {
+		t.Fatalf("chmod unreadable source: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chmod(unreadable, 0o644)
+	})
+
+	for i := 0; i < 32; i++ {
+		path := filepath.Join(root, "src", "file_"+strconv.Itoa(i)+".swift")
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatalf("mkdir source dir: %v", err)
+		}
+		if err := os.WriteFile(path, []byte("let value = 1"), 0o644); err != nil {
+			t.Fatalf("write source file: %v", err)
+		}
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := Scan(Options{Root: root, Workers: 1})
+		done <- err
+	}()
+
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatalf("expected read error, got nil")
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("scan deadlocked after file read error")
 	}
 }

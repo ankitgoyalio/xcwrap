@@ -17,6 +17,7 @@ Always refer to these repositories for implementation and CLI best practices:
 - No interactive prompts: commands must remain automation-safe and CI-safe by default.
 - Deterministic output: stable ordering for machine parsing and reproducible diffs.
 - Safety-first writes: destructive operations require explicit opt-in and git state checks.
+- Shell preference: whenever sharing terminal commands, default to fish-compatible syntax unless another shell is explicitly requested.
 
 ## xcwrap Scope (V1)
 

@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestAssetsScan_DefaultJSONOutput(t *testing.T) {
@@ -237,5 +239,64 @@ func TestAssetsScan_ExcludeFlag_AllowsAdditionalExcludes(t *testing.T) {
 	}
 	if summary["assetSets"] != float64(0) {
 		t.Fatalf("expected assetSets=0 with explicit --exclude, got %v", summary["assetSets"])
+	}
+}
+
+func TestAssetsScan_ReadErrorReturnsRuntimeError(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("permission model differs on windows")
+	}
+
+	root := t.TempDir()
+	catalog := filepath.Join(root, "Assets.xcassets")
+	if err := os.MkdirAll(filepath.Join(catalog, "used.imageset"), 0o755); err != nil {
+		t.Fatalf("mkdir asset set: %v", err)
+	}
+
+	if err := os.WriteFile(filepath.Join(root, "Main.swift"), []byte(`let _ = UIImage(named: "used")`), 0o644); err != nil {
+		t.Fatalf("write source file: %v", err)
+	}
+
+	unreadable := filepath.Join(root, "Unreadable.swift")
+	if err := os.WriteFile(unreadable, []byte("let value = 1"), 0o644); err != nil {
+		t.Fatalf("write unreadable file: %v", err)
+	}
+	if err := os.Chmod(unreadable, 0o000); err != nil {
+		t.Fatalf("chmod unreadable file: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chmod(unreadable, 0o644)
+	})
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	done := make(chan int, 1)
+	go func() {
+		done <- Execute([]string{"assets", "scan", "--path", root}, &stdout, &stderr)
+	}()
+
+	select {
+	case exitCode := <-done:
+		if exitCode != 1 {
+			t.Fatalf("expected exit code 1, got %d", exitCode)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("execute deadlocked after file read error")
+	}
+
+	if stdout.Len() != 0 {
+		t.Fatalf("expected empty stdout, got %s", stdout.String())
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(stderr.Bytes(), &payload); err != nil {
+		t.Fatalf("expected JSON error output, got err: %v, stderr=%s", err, stderr.String())
+	}
+	errVal, ok := payload["error"].(map[string]any)
+	if !ok {
+		t.Fatalf("missing error object: %v", payload)
+	}
+	if errVal["code"] != "runtime_error" {
+		t.Fatalf("unexpected error code: %v", errVal["code"])
 	}
 }
