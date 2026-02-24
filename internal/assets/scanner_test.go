@@ -469,6 +469,45 @@ func TestScan_FindsSwiftTypedImageResourceIdentifiers_FromTypedReturn(t *testing
 	}
 }
 
+func TestScan_ScopesSwiftTypedReturnEnumMembersToResourceContexts(t *testing.T) {
+	root := t.TempDir()
+	catalog := filepath.Join(root, "App", "Assets.xcassets")
+	if err := os.MkdirAll(filepath.Join(catalog, "betaSubscriptionIcon.imageset"), 0o755); err != nil {
+		t.Fatalf("mkdir used image asset set: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(catalog, "notAnAsset.imageset"), 0o755); err != nil {
+		t.Fatalf("mkdir unrelated image asset set: %v", err)
+	}
+
+	swiftPath := filepath.Join(root, "App", "Subscription.swift")
+	content := `func getCurrentEditionIcon() -> ImageResource {
+    return .betaSubscriptionIcon
+}
+
+enum UnrelatedState {
+    case notAnAsset
+}
+
+func currentState() -> UnrelatedState {
+    return .notAnAsset
+}
+`
+	if err := os.WriteFile(swiftPath, []byte(content), 0o644); err != nil {
+		t.Fatalf("write swift source: %v", err)
+	}
+
+	res, err := Scan(Options{Root: root, Workers: 2})
+	if err != nil {
+		t.Fatalf("scan error: %v", err)
+	}
+	if len(res.UsedAssets) != 1 || res.UsedAssets[0] != "betaSubscriptionIcon" {
+		t.Fatalf("unexpected used assets: %#v", res.UsedAssets)
+	}
+	if len(res.UnusedAssets) != 1 || res.UnusedAssets[0] != "notAnAsset" {
+		t.Fatalf("unexpected unused assets: %#v", res.UnusedAssets)
+	}
+}
+
 func TestScan_FindsSwiftTypedImageResourceIdentifiers_FromScalarAssignment(t *testing.T) {
 	root := t.TempDir()
 	catalog := filepath.Join(root, "App", "Assets.xcassets")

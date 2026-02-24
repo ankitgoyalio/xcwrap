@@ -368,8 +368,8 @@ func extractSwiftTypedResourceIdentifiers(content string) []string {
 	varMatches := swiftTypedResourceVarRe.FindAllStringSubmatch(content, -1)
 	initMatches := swiftTypedResourceVarInitRe.FindAllStringSubmatch(content, -1)
 	scalarVarMatches := swiftTypedResourceScalarVarRe.FindAllStringSubmatch(content, -1)
-	hasResourceReturn := swiftResourceReturnTypeRe.MatchString(content)
-	if len(varMatches) == 0 && len(initMatches) == 0 && len(scalarVarMatches) == 0 && !hasResourceReturn {
+	resourceReturnBodies := extractSwiftResourceReturnBodies(content)
+	if len(varMatches) == 0 && len(initMatches) == 0 && len(scalarVarMatches) == 0 && len(resourceReturnBodies) == 0 {
 		return nil
 	}
 
@@ -393,8 +393,8 @@ func extractSwiftTypedResourceIdentifiers(content string) []string {
 		}
 	}
 
-	if hasResourceReturn {
-		for _, m := range swiftReturnEnumMemberRe.FindAllStringSubmatch(content, -1) {
+	for _, body := range resourceReturnBodies {
+		for _, m := range swiftReturnEnumMemberRe.FindAllStringSubmatch(body, -1) {
 			if len(m) < 2 {
 				continue
 			}
@@ -405,12 +405,58 @@ func extractSwiftTypedResourceIdentifiers(content string) []string {
 			if _, exists := seenIdentifiers[identifier]; exists {
 				continue
 			}
-			seenIdentifiers[identifier] = struct{}{}
-			identifiers = append(identifiers, identifier)
+				seenIdentifiers[identifier] = struct{}{}
+				identifiers = append(identifiers, identifier)
+			}
+		}
+	return identifiers
+}
+
+func extractSwiftResourceReturnBodies(content string) []string {
+	matches := swiftResourceReturnTypeRe.FindAllStringIndex(content, -1)
+	if len(matches) == 0 {
+		return nil
+	}
+
+	bodies := make([]string, 0, len(matches))
+	for _, match := range matches {
+		if len(match) < 2 {
+			continue
+		}
+		openBrace := strings.Index(content[match[0]:], "{")
+		if openBrace < 0 {
+			continue
+		}
+		openIdx := match[0] + openBrace
+		closeIdx := findMatchingBrace(content, openIdx)
+		if closeIdx < 0 || closeIdx <= openIdx {
+			continue
+		}
+		bodies = append(bodies, content[openIdx+1:closeIdx])
+	}
+
+	return bodies
+}
+
+func findMatchingBrace(content string, openIdx int) int {
+	if openIdx < 0 || openIdx >= len(content) || content[openIdx] != '{' {
+		return -1
+	}
+
+	depth := 0
+	for i := openIdx; i < len(content); i++ {
+		switch content[i] {
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				return i
+			}
 		}
 	}
 
-	return identifiers
+	return -1
 }
 
 func extractEnumIdentifiersForSwiftVar(content string, varName string) []string {
