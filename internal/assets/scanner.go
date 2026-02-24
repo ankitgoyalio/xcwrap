@@ -149,7 +149,7 @@ func collectAssets(root string, include []string, exclude []string) (int, []stri
 			if name != "" {
 				catalogPath := catalogPathForAsset(path)
 				if catalogPath == "" {
-					catalogPath = filepath.Dir(path)
+					return nil
 				}
 				discoveredAssets = append(discoveredAssets, discoveredAsset{
 					Name:        name,

@@ -642,3 +642,41 @@ func TestScan_DuplicateAssetNamesAcrossCatalogs(t *testing.T) {
 		t.Fatalf("expected module A catalog to be used, but found in unusedByFile: %#v", res.UnusedByFile[moduleACatalog])
 	}
 }
+
+func TestScan_IgnoresAssetSetsOutsideCatalogs(t *testing.T) {
+	root := t.TempDir()
+
+	catalog := filepath.Join(root, "App", "Assets.xcassets")
+	if err := os.MkdirAll(filepath.Join(catalog, "inCatalog.imageset"), 0o755); err != nil {
+		t.Fatalf("mkdir in-catalog asset: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, "Fixtures", "outOfCatalog.imageset"), 0o755); err != nil {
+		t.Fatalf("mkdir out-of-catalog asset: %v", err)
+	}
+
+	sourcePath := filepath.Join(root, "App", "Feature.swift")
+	if err := os.WriteFile(sourcePath, []byte(`let _ = UIImage(named: "inCatalog")`), 0o644); err != nil {
+		t.Fatalf("write source: %v", err)
+	}
+
+	res, err := Scan(Options{Root: root, Workers: 2})
+	if err != nil {
+		t.Fatalf("scan error: %v", err)
+	}
+
+	if res.AssetCatalogs != 1 {
+		t.Fatalf("expected 1 catalog, got %d", res.AssetCatalogs)
+	}
+	if len(res.AssetNames) != 1 || res.AssetNames[0] != "inCatalog" {
+		t.Fatalf("unexpected asset names: %#v", res.AssetNames)
+	}
+	if len(res.UsedAssets) != 1 || res.UsedAssets[0] != "inCatalog" {
+		t.Fatalf("unexpected used assets: %#v", res.UsedAssets)
+	}
+	if len(res.UnusedAssets) != 0 {
+		t.Fatalf("unexpected unused assets: %#v", res.UnusedAssets)
+	}
+	if len(res.UnusedByFile) != 0 {
+		t.Fatalf("expected no unused grouped entries, got %#v", res.UnusedByFile)
+	}
+}
