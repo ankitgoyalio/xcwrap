@@ -680,3 +680,21 @@ func TestScan_IgnoresAssetSetsOutsideCatalogs(t *testing.T) {
 		t.Fatalf("expected no unused grouped entries, got %#v", res.UnusedByFile)
 	}
 }
+
+func TestMatchesAny_GlobPatternMatchesExpectedPath(t *testing.T) {
+	if !matchesAny("App/Main.swift", []string{"App/*.swift"}) {
+		t.Fatalf("expected glob to match path")
+	}
+}
+
+func TestMatchesAny_DirectoryPatternMatchesSubtree(t *testing.T) {
+	if !matchesAny("ExternalLib/Assets.xcassets/icon.imageset", []string{"ExternalLib/"}) {
+		t.Fatalf("expected directory pattern to match subtree")
+	}
+}
+
+func TestMatchesAny_DoesNotUseSubstringFallback(t *testing.T) {
+	if matchesAny("MyExternalLib/Assets.xcassets/icon.imageset", []string{"ExternalLib/"}) {
+		t.Fatalf("did not expect substring overlap to match")
+	}
+}

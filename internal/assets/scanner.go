@@ -2,6 +2,7 @@ package assets
 
 import (
 	"io/fs"
+	"path"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -721,22 +722,30 @@ func isAssetSetDir(name string) bool {
 	}
 }
 
-func matchesAny(path string, patterns []string) bool {
+func matchesAny(candidatePath string, patterns []string) bool {
 	if len(patterns) == 0 {
 		return false
 	}
 
-	normalized := filepath.ToSlash(path)
+	normalized := filepath.ToSlash(candidatePath)
+	normalized = strings.TrimPrefix(normalized, "./")
+	normalized = strings.TrimPrefix(normalized, "/")
 	for _, pattern := range patterns {
 		p := filepath.ToSlash(strings.TrimSpace(pattern))
 		if p == "" {
 			continue
 		}
-		ok, err := filepath.Match(p, normalized)
-		if err == nil && ok {
-			return true
+		p = strings.TrimPrefix(p, "./")
+		p = strings.TrimPrefix(p, "/")
+		if strings.HasSuffix(p, "/") {
+			base := strings.TrimSuffix(p, "/")
+			if normalized == base || strings.HasPrefix(normalized, base+"/") {
+				return true
+			}
+			continue
 		}
-		if strings.Contains(normalized, p) {
+		ok, err := path.Match(p, normalized)
+		if err == nil && ok {
 			return true
 		}
 	}
