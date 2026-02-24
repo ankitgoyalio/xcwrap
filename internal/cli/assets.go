@@ -306,8 +306,13 @@ func renderScanResult(w io.Writer, output string, result scanResult) error {
 	case outputJSON:
 		return writeJSON(w, result)
 	case outputTable:
-		_, err := fmt.Fprintf(w,
-			"command\tpath\tworkers\tasset_catalogs\tasset_sets\tused_assets\tunused_assets\n%s\t%s\t%d\t%d\t%d\t%d\t%d\n",
+		tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+		if _, err := fmt.Fprintln(tw, "command\tpath\tworkers\tasset_catalogs\tasset_sets\tused_assets\tunused_assets"); err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintf(
+			tw,
+			"%s\t%s\t%d\t%d\t%d\t%d\t%d\n",
 			result.Command,
 			result.Path,
 			result.Workers,
@@ -315,8 +320,10 @@ func renderScanResult(w io.Writer, output string, result scanResult) error {
 			result.Summary.AssetSets,
 			result.Summary.UsedAssets,
 			result.Summary.UnusedAssets,
-		)
-		return err
+		); err != nil {
+			return err
+		}
+		return tw.Flush()
 	case outputMarkdown:
 		_, err := fmt.Fprintf(w,
 			"| command | path | workers | asset_catalogs | asset_sets | used_assets | unused_assets |\n|---|---|---:|---:|---:|---:|---:|\n| %s | %s | %d | %d | %d | %d | %d |\n",

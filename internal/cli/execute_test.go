@@ -226,7 +226,7 @@ func TestAssetsScan_TableOutput_IsNotJSON(t *testing.T) {
 	if strings.HasPrefix(strings.TrimSpace(out), "{") {
 		t.Fatalf("expected table output, got JSON: %s", out)
 	}
-	if !strings.Contains(out, "command\tpath\tworkers\tasset_catalogs") {
+	if !strings.Contains(out, "command") || !strings.Contains(out, "asset_catalogs") {
 		t.Fatalf("unexpected table output: %s", out)
 	}
 }
