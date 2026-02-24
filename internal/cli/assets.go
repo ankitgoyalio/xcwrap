@@ -115,7 +115,6 @@ type unusedResult struct {
 }
 
 type unusedFileResult struct {
-	FilePath     string   `json:"filePath"`
 	UnusedAssets []string `json:"unusedAssets"`
 }
 
@@ -401,27 +400,17 @@ func assetNameFromPath(assetPath string) string {
 func buildUnusedByFilePayload(grouped map[string][]string) map[string]unusedFileResult {
 	out := make(map[string]unusedFileResult, len(grouped))
 	for fullPath, assetPaths := range grouped {
-		fileName := filepath.Base(fullPath)
-		entry, ok := out[fileName]
-		if !ok {
-			entry = unusedFileResult{
-				FilePath:     fullPath,
-				UnusedAssets: []string{},
-			}
-		}
-		if fullPath < entry.FilePath {
-			entry.FilePath = fullPath
-		}
+		entry := unusedFileResult{UnusedAssets: []string{}}
 		for _, assetPath := range assetPaths {
 			entry.UnusedAssets = append(entry.UnusedAssets, assetNameFromPath(assetPath))
 		}
-		out[fileName] = entry
+		out[fullPath] = entry
 	}
 
-	for fileName, entry := range out {
+	for filePath, entry := range out {
 		slices.Sort(entry.UnusedAssets)
 		entry.UnusedAssets = slices.Compact(entry.UnusedAssets)
-		out[fileName] = entry
+		out[filePath] = entry
 	}
 
 	return out

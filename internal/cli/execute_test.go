@@ -161,6 +161,15 @@ func TestAssetsUnused_ReturnsExitCode3WhenUnusedFound(t *testing.T) {
 	if !ok || len(grouped) != 1 {
 		t.Fatalf("unexpected unusedByFile payload: %#v", payload["unusedByFile"])
 	}
+	for key, raw := range grouped {
+		entry, ok := raw.(map[string]any)
+		if !ok {
+			t.Fatalf("unexpected grouped entry type for %s: %#v", key, raw)
+		}
+		if _, hasFilePath := entry["filePath"]; hasFilePath {
+			t.Fatalf("filePath should not be present in unusedByFile entry: %#v", entry)
+		}
+	}
 }
 
 func TestAssetsScan_TableOutput_IsNotJSON(t *testing.T) {
@@ -338,7 +347,45 @@ func TestAssetsUnused_DuplicateNamesAcrossCatalogs(t *testing.T) {
 	if !ok || len(grouped) != 1 {
 		t.Fatalf("expected one grouped unused catalog, got %#v", payload["unusedByFile"])
 	}
-	if _, exists := grouped["Assets.xcassets"]; !exists {
-		t.Fatalf("expected grouped key Assets.xcassets, got %#v", grouped)
+	if _, exists := grouped[moduleBCatalog]; !exists {
+		t.Fatalf("expected grouped key %s, got %#v", moduleBCatalog, grouped)
+	}
+}
+
+func TestAssetsUnused_JSONGroupingDistinctCatalogsWithSameBasename(t *testing.T) {
+	root := t.TempDir()
+
+	moduleACatalog := filepath.Join(root, "Modules", "ModuleA", "Assets.xcassets")
+	moduleBCatalog := filepath.Join(root, "Modules", "ModuleB", "Assets.xcassets")
+	if err := os.MkdirAll(filepath.Join(moduleACatalog, "a.imageset"), 0o755); err != nil {
+		t.Fatalf("mkdir module a asset: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(moduleBCatalog, "b.imageset"), 0o755); err != nil {
+		t.Fatalf("mkdir module b asset: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := Execute([]string{"assets", "unused", "--path", root}, &stdout, &stderr)
+	if exitCode != 3 {
+		t.Fatalf("expected exit code 3, got %d, stderr=%s", exitCode, stderr.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got %s", stderr.String())
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &payload); err != nil {
+		t.Fatalf("expected JSON output, got err: %v, stdout=%s", err, stdout.String())
+	}
+	grouped, ok := payload["unusedByFile"].(map[string]any)
+	if !ok || len(grouped) != 2 {
+		t.Fatalf("expected two grouped unused catalogs, got %#v", payload["unusedByFile"])
+	}
+	if _, exists := grouped[moduleACatalog]; !exists {
+		t.Fatalf("expected grouped key %s, got %#v", moduleACatalog, grouped)
+	}
+	if _, exists := grouped[moduleBCatalog]; !exists {
+		t.Fatalf("expected grouped key %s, got %#v", moduleBCatalog, grouped)
 	}
 }
