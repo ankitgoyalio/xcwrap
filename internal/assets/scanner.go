@@ -22,8 +22,11 @@ var sourceExtensions = map[string]struct{}{
 
 var swiftResourceRefRe = regexp.MustCompile(`\b(?:(?:UI|NS)?(?:Image|Color)|(?:NS)?DataAsset)\s*\(\s*resource\s*:\s*\.([A-Za-z_][A-Za-z0-9_]*)`)
 var ibAssetRefRe = regexp.MustCompile(`\b(?:image|selectedImage|highlightedImage|name)\s*=\s*"([A-Za-z0-9._ -]+)"`)
-var swiftNamedAssetRefRe = regexp.MustCompile(`\b(?:(?:UI|NS)?(?:Image|Color)|(?:NS)?DataAsset)\s*\(\s*(?:named|name)\s*:\s*"([A-Za-z0-9._ -]+)"`)
-var swiftUIAssetRefRe = regexp.MustCompile(`\b(?:Image|Color)\s*\(\s*"([A-Za-z0-9._ -]+)"(?:\s*,[^)]*)?\)`)
+var swiftNamedImageAssetRefRe = regexp.MustCompile(`\b(?:UI|NS)?Image\s*\(\s*(?:named|name)\s*:\s*"([A-Za-z0-9._ -]+)"`)
+var swiftNamedColorAssetRefRe = regexp.MustCompile(`\b(?:UI|NS)?Color\s*\(\s*(?:named|name)\s*:\s*"([A-Za-z0-9._ -]+)"`)
+var swiftNamedDataAssetRefRe = regexp.MustCompile(`\b(?:NS)?DataAsset\s*\(\s*(?:named|name)\s*:\s*"([A-Za-z0-9._ -]+)"`)
+var swiftUIImageAssetRefRe = regexp.MustCompile(`\bImage\s*\(\s*"([A-Za-z0-9._ -]+)"(?:\s*,[^)]*)?\)`)
+var swiftUIColorAssetRefRe = regexp.MustCompile(`\bColor\s*\(\s*"([A-Za-z0-9._ -]+)"(?:\s*,[^)]*)?\)`)
 var swiftLabeledResourceMemberRefRe = regexp.MustCompile(`\b(?:icon|moduleIcon|illustration|illustrationName|imageResource)\s*:\s*\.([A-Za-z_][A-Za-z0-9_]*)`)
 var objcImageNamedAssetRefRe = regexp.MustCompile(`\b(?:UI|NS)Image\s+imageNamed:\s*@\"([A-Za-z0-9._ -]+)\"`)
 var objcImageNamedVariableRefRe = regexp.MustCompile(`\b(?:UI|NS)Image\s+imageNamed:\s*([A-Za-z_][A-Za-z0-9_]*)`)
@@ -56,6 +59,11 @@ type discoveredAsset struct {
 	CatalogPath string
 	AssetPath   string
 	AssetType   string
+}
+
+type sourceAssetReference struct {
+	Name      string
+	AssetType string
 }
 
 func Scan(opts Options) (Result, error) {
@@ -196,13 +204,24 @@ func collectUsedAssets(root string, include []string, exclude []string, discover
 	usedSet := make(map[string]struct{}, 128)
 	var usedMu sync.Mutex
 	assetPathsByName := make(map[string][]discoveredAsset, len(discoveredAssets))
+	assetPathsByTypeAndName := make(map[string][]discoveredAsset, len(discoveredAssets))
 	for _, asset := range discoveredAssets {
 		assetPathsByName[asset.Name] = append(assetPathsByName[asset.Name], asset)
+		typeKey := sourceAssetTypeKey(asset.Name, asset.AssetType)
+		assetPathsByTypeAndName[typeKey] = append(assetPathsByTypeAndName[typeKey], asset)
 	}
 	swiftResourceCandidates := buildSwiftResourceCandidateIndex(discoveredAssets)
 
-	markUsed := func(sourcePath string, name string) {
-		candidates, ok := assetPathsByName[name]
+	markUsed := func(sourcePath string, name string, assetType string) {
+		var (
+			candidates []discoveredAsset
+			ok         bool
+		)
+		if assetType != "" {
+			candidates, ok = assetPathsByTypeAndName[sourceAssetTypeKey(name, assetType)]
+		} else {
+			candidates, ok = assetPathsByName[name]
+		}
 		if !ok || len(candidates) == 0 {
 			return
 		}
@@ -236,11 +255,11 @@ func collectUsedAssets(root string, include []string, exclude []string, discover
 				switch ext {
 				case ".storyboard", ".xib":
 					for _, name := range extractIBAssetReferences(content) {
-						markUsed(path, name)
+						markUsed(path, name, "")
 					}
 				default:
-					for _, name := range extractExplicitSourceAssetReferences(content) {
-						markUsed(path, name)
+					for _, ref := range extractExplicitSourceAssetReferences(content) {
+						markUsed(path, ref.Name, ref.AssetType)
 					}
 				}
 
@@ -514,11 +533,11 @@ func extractEnumIdentifiersForSwiftVar(content string, varName string) []string 
 	return out
 }
 
-func extractExplicitSourceAssetReferences(content string) []string {
-	results := make([]string, 0, 16)
+func extractExplicitSourceAssetReferences(content string) []sourceAssetReference {
+	results := make([]sourceAssetReference, 0, 16)
 	seen := make(map[string]struct{})
 
-	appendMatches := func(re *regexp.Regexp) {
+	appendTypedMatches := func(re *regexp.Regexp, assetType string) {
 		matches := re.FindAllStringSubmatch(content, -1)
 		for _, m := range matches {
 			if len(m) < 2 {
@@ -528,29 +547,38 @@ func extractExplicitSourceAssetReferences(content string) []string {
 			if name == "" {
 				continue
 			}
-			if _, exists := seen[name]; exists {
+			key := sourceAssetTypeKey(name, assetType)
+			if _, exists := seen[key]; exists {
 				continue
 			}
-			seen[name] = struct{}{}
-			results = append(results, name)
+			seen[key] = struct{}{}
+			results = append(results, sourceAssetReference{Name: name, AssetType: assetType})
 		}
 	}
 
-	appendMatches(swiftNamedAssetRefRe)
-	appendMatches(swiftUIAssetRefRe)
-	appendMatches(swiftLabeledResourceMemberRefRe)
-	appendMatches(objcImageNamedAssetRefRe)
-	appendMatches(objcColorNamedAssetRefRe)
-	appendMatches(objcDataAssetNameRefRe)
+	appendTypedMatches(swiftNamedImageAssetRefRe, "imageset")
+	appendTypedMatches(swiftNamedColorAssetRefRe, "colorset")
+	appendTypedMatches(swiftNamedDataAssetRefRe, "dataset")
+	appendTypedMatches(swiftUIImageAssetRefRe, "imageset")
+	appendTypedMatches(swiftUIColorAssetRefRe, "colorset")
+	appendTypedMatches(swiftLabeledResourceMemberRefRe, "imageset")
+	appendTypedMatches(objcImageNamedAssetRefRe, "imageset")
+	appendTypedMatches(objcColorNamedAssetRefRe, "colorset")
+	appendTypedMatches(objcDataAssetNameRefRe, "dataset")
 	for _, name := range extractObjCImageNamedVariableReferences(content) {
-		if _, exists := seen[name]; exists {
+		key := sourceAssetTypeKey(name, "imageset")
+		if _, exists := seen[key]; exists {
 			continue
 		}
-		seen[name] = struct{}{}
-		results = append(results, name)
+		seen[key] = struct{}{}
+		results = append(results, sourceAssetReference{Name: name, AssetType: "imageset"})
 	}
 
 	return results
+}
+
+func sourceAssetTypeKey(name string, assetType string) string {
+	return assetType + "\x00" + name
 }
 
 func extractObjCImageNamedVariableReferences(content string) []string {

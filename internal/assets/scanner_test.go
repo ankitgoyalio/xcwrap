@@ -508,6 +508,37 @@ func currentState() -> UnrelatedState {
 	}
 }
 
+func TestScan_ExplicitImageNamedReference_DoesNotMarkSameNameColorAssetUsed(t *testing.T) {
+	root := t.TempDir()
+	catalog := filepath.Join(root, "App", "Assets.xcassets")
+	imageAssetPath := filepath.Join(catalog, "logo.imageset")
+	colorAssetPath := filepath.Join(catalog, "logo.colorset")
+	if err := os.MkdirAll(imageAssetPath, 0o755); err != nil {
+		t.Fatalf("mkdir image asset set: %v", err)
+	}
+	if err := os.MkdirAll(colorAssetPath, 0o755); err != nil {
+		t.Fatalf("mkdir color asset set: %v", err)
+	}
+
+	swiftPath := filepath.Join(root, "App", "Feature.swift")
+	content := `let _ = UIImage(named: "logo")`
+	if err := os.WriteFile(swiftPath, []byte(content), 0o644); err != nil {
+		t.Fatalf("write swift source: %v", err)
+	}
+
+	res, err := Scan(Options{Root: root, Workers: 2})
+	if err != nil {
+		t.Fatalf("scan error: %v", err)
+	}
+	unusedInCatalog, ok := res.UnusedByFile[catalog]
+	if !ok {
+		t.Fatalf("expected catalog %q in unusedByFile, got %#v", catalog, res.UnusedByFile)
+	}
+	if len(unusedInCatalog) != 1 || unusedInCatalog[0] != colorAssetPath {
+		t.Fatalf("expected only colorset unused path %q, got %#v", colorAssetPath, unusedInCatalog)
+	}
+}
+
 func TestScan_FindsSwiftTypedImageResourceIdentifiers_FromScalarAssignment(t *testing.T) {
 	root := t.TempDir()
 	catalog := filepath.Join(root, "App", "Assets.xcassets")
