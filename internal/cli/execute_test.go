@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -387,5 +388,197 @@ func TestAssetsUnused_JSONGroupingDistinctCatalogsWithSameBasename(t *testing.T)
 	}
 	if _, exists := grouped[moduleBCatalog]; !exists {
 		t.Fatalf("expected grouped key %s, got %#v", moduleBCatalog, grouped)
+	}
+}
+
+func TestAssetsPrune_DryRunReportsCandidatesWithoutDeleting(t *testing.T) {
+	root := t.TempDir()
+	catalog := filepath.Join(root, "Assets.xcassets")
+	usedPath := filepath.Join(catalog, "used.imageset")
+	unusedPath := filepath.Join(catalog, "unused.imageset")
+	if err := os.MkdirAll(usedPath, 0o755); err != nil {
+		t.Fatalf("mkdir used asset set: %v", err)
+	}
+	if err := os.MkdirAll(unusedPath, 0o755); err != nil {
+		t.Fatalf("mkdir unused asset set: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "Main.swift"), []byte(`let _ = UIImage(named: "used")`), 0o644); err != nil {
+		t.Fatalf("write source: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := Execute([]string{"assets", "prune", "--path", root}, &stdout, &stderr)
+	if exitCode != 0 {
+		t.Fatalf("expected exit code 0, got %d, stderr=%s", exitCode, stderr.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got %s", stderr.String())
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &payload); err != nil {
+		t.Fatalf("expected JSON output, got err: %v", err)
+	}
+	if payload["dryRun"] != true {
+		t.Fatalf("expected dryRun=true, got %v", payload["dryRun"])
+	}
+	deleted, ok := payload["deleted"].([]any)
+	if !ok || len(deleted) != 1 || deleted[0] != unusedPath {
+		t.Fatalf("unexpected deleted payload: %#v", payload["deleted"])
+	}
+
+	if _, err := os.Stat(unusedPath); err != nil {
+		t.Fatalf("expected dry-run to keep %s, stat err=%v", unusedPath, err)
+	}
+}
+
+func TestAssetsPrune_ApplyDeletesUnusedAssetsWhenGitTreeClean(t *testing.T) {
+	root := t.TempDir()
+	catalog := filepath.Join(root, "Assets.xcassets")
+	usedPath := filepath.Join(catalog, "used.imageset")
+	unusedA := filepath.Join(catalog, "a.imageset")
+	unusedB := filepath.Join(catalog, "z.colorset")
+	if err := os.MkdirAll(usedPath, 0o755); err != nil {
+		t.Fatalf("mkdir used asset set: %v", err)
+	}
+	if err := os.MkdirAll(unusedA, 0o755); err != nil {
+		t.Fatalf("mkdir unused asset set A: %v", err)
+	}
+	if err := os.MkdirAll(unusedB, 0o755); err != nil {
+		t.Fatalf("mkdir unused asset set B: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "Main.swift"), []byte(`let _ = UIImage(named: "used")`), 0o644); err != nil {
+		t.Fatalf("write source: %v", err)
+	}
+	initCleanGitRepo(t, root)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := Execute([]string{"assets", "prune", "--path", root, "--apply"}, &stdout, &stderr)
+	if exitCode != 0 {
+		t.Fatalf("expected exit code 0, got %d, stderr=%s", exitCode, stderr.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got %s", stderr.String())
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &payload); err != nil {
+		t.Fatalf("expected JSON output, got err: %v", err)
+	}
+	deleted, ok := payload["deleted"].([]any)
+	if !ok || len(deleted) != 2 {
+		t.Fatalf("unexpected deleted payload: %#v", payload["deleted"])
+	}
+	if deleted[0] != unusedA || deleted[1] != unusedB {
+		t.Fatalf("expected deterministic sorted deleted payload [%s %s], got %#v", unusedA, unusedB, deleted)
+	}
+	if payload["dryRun"] != false {
+		t.Fatalf("expected dryRun=false, got %v", payload["dryRun"])
+	}
+	if _, err := os.Stat(usedPath); err != nil {
+		t.Fatalf("expected used asset set to remain, stat err=%v", err)
+	}
+	if _, err := os.Stat(unusedA); !os.IsNotExist(err) {
+		t.Fatalf("expected %s to be deleted, stat err=%v", unusedA, err)
+	}
+	if _, err := os.Stat(unusedB); !os.IsNotExist(err) {
+		t.Fatalf("expected %s to be deleted, stat err=%v", unusedB, err)
+	}
+}
+
+func TestAssetsPrune_ApplyRequiresCleanGitTree(t *testing.T) {
+	root := t.TempDir()
+	catalog := filepath.Join(root, "Assets.xcassets")
+	unusedPath := filepath.Join(catalog, "unused.imageset")
+	if err := os.MkdirAll(unusedPath, 0o755); err != nil {
+		t.Fatalf("mkdir unused asset set: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(unusedPath, "Contents.json"), []byte(`{}`), 0o644); err != nil {
+		t.Fatalf("write contents: %v", err)
+	}
+	initCleanGitRepo(t, root)
+	if err := os.WriteFile(filepath.Join(root, "dirty.txt"), []byte("dirty"), 0o644); err != nil {
+		t.Fatalf("write dirty file: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := Execute([]string{"assets", "prune", "--path", root, "--apply"}, &stdout, &stderr)
+	if exitCode != 1 {
+		t.Fatalf("expected exit code 1, got %d", exitCode)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("expected empty stdout, got %s", stdout.String())
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(stderr.Bytes(), &payload); err != nil {
+		t.Fatalf("expected JSON error output, got err: %v, stderr=%s", err, stderr.String())
+	}
+	errVal, ok := payload["error"].(map[string]any)
+	if !ok {
+		t.Fatalf("missing error object: %v", payload)
+	}
+	if errVal["code"] != "runtime_error" {
+		t.Fatalf("unexpected error code: %v", errVal["code"])
+	}
+	message, _ := errVal["message"].(string)
+	if !strings.Contains(message, "git working tree is not clean") {
+		t.Fatalf("unexpected error message: %q", message)
+	}
+	if _, err := os.Stat(unusedPath); err != nil {
+		t.Fatalf("expected apply rejection to keep %s, stat err=%v", unusedPath, err)
+	}
+}
+
+func TestAssetsPrune_ApplyForceOverridesDirtyGitTree(t *testing.T) {
+	root := t.TempDir()
+	catalog := filepath.Join(root, "Assets.xcassets")
+	unusedPath := filepath.Join(catalog, "unused.imageset")
+	if err := os.MkdirAll(unusedPath, 0o755); err != nil {
+		t.Fatalf("mkdir unused asset set: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(unusedPath, "Contents.json"), []byte(`{}`), 0o644); err != nil {
+		t.Fatalf("write contents: %v", err)
+	}
+	initCleanGitRepo(t, root)
+	if err := os.WriteFile(filepath.Join(root, "dirty.txt"), []byte("dirty"), 0o644); err != nil {
+		t.Fatalf("write dirty file: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := Execute([]string{"assets", "prune", "--path", root, "--apply", "--force"}, &stdout, &stderr)
+	if exitCode != 0 {
+		t.Fatalf("expected exit code 0, got %d, stderr=%s", exitCode, stderr.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got %s", stderr.String())
+	}
+	if _, err := os.Stat(unusedPath); !os.IsNotExist(err) {
+		t.Fatalf("expected %s to be deleted, stat err=%v", unusedPath, err)
+	}
+}
+
+func initCleanGitRepo(t *testing.T, root string) {
+	t.Helper()
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+	runGit(t, root, "init", "--quiet")
+	runGit(t, root, "config", "user.email", "tests@example.com")
+	runGit(t, root, "config", "user.name", "xcwrap tests")
+	runGit(t, root, "add", ".")
+	runGit(t, root, "commit", "--quiet", "-m", "initial")
+}
+
+func runGit(t *testing.T, root string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", append([]string{"-C", root}, args...)...)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %v failed: %v, output=%s", args, err, strings.TrimSpace(string(out)))
 	}
 }

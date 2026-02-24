@@ -1,9 +1,11 @@
 package cli
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -202,12 +204,33 @@ func newAssetsPruneCommand(ctx *runContext) *cobra.Command {
 				return usageError{Message: "--force requires --apply"}
 			}
 
+			scan, err := assets.Scan(assets.Options{
+				Root:    resolvedPath,
+				Exclude: append([]string{}, defaultExcludedPaths...),
+				Workers: defaultWorkers(),
+			})
+			if err != nil {
+				return err
+			}
+
+			pruneTargets := collectPruneTargets(scan.UnusedByFile)
+			if apply {
+				if !force {
+					if err := requireCleanGitWorkingTree(resolvedPath); err != nil {
+						return err
+					}
+				}
+				if err := deletePruneTargets(pruneTargets); err != nil {
+					return err
+				}
+			}
+
 			result := pruneResult{
 				Command: "assets prune",
 				Path:    resolvedPath,
 				Apply:   apply,
 				Force:   force,
-				Deleted: []string{},
+				Deleted: pruneTargets,
 				DryRun:  !apply,
 			}
 			return renderPruneResult(ctx.stdout, ctx.output, result)
@@ -414,4 +437,56 @@ func buildUnusedByFilePayload(grouped map[string][]string) map[string]unusedFile
 	}
 
 	return out
+}
+
+func collectPruneTargets(grouped map[string][]string) []string {
+	set := make(map[string]struct{})
+	for _, assetPaths := range grouped {
+		for _, assetPath := range assetPaths {
+			if !isPrunableAssetSetPath(assetPath) {
+				continue
+			}
+			set[assetPath] = struct{}{}
+		}
+	}
+
+	out := make([]string, 0, len(set))
+	for path := range set {
+		out = append(out, path)
+	}
+	slices.Sort(out)
+	return out
+}
+
+func isPrunableAssetSetPath(path string) bool {
+	switch filepath.Ext(path) {
+	case ".imageset", ".colorset", ".dataset":
+		return true
+	default:
+		return false
+	}
+}
+
+func deletePruneTargets(paths []string) error {
+	for _, path := range paths {
+		if !isPrunableAssetSetPath(path) {
+			return fmt.Errorf("refusing to delete non-asset-set path: %s", path)
+		}
+		if err := os.RemoveAll(path); err != nil {
+			return fmt.Errorf("failed to delete %s: %w", path, err)
+		}
+	}
+	return nil
+}
+
+func requireCleanGitWorkingTree(root string) error {
+	cmd := exec.Command("git", "-C", root, "status", "--porcelain")
+	out, err := cmd.Output()
+	if err != nil {
+		return fmt.Errorf("failed to check git working tree: %w", err)
+	}
+	if len(bytes.TrimSpace(out)) > 0 {
+		return fmt.Errorf("git working tree is not clean; commit/stash changes or rerun with --force")
+	}
+	return nil
 }
