@@ -42,6 +42,7 @@ type discoveredAsset struct {
 	Name        string
 	CatalogPath string
 	AssetPath   string
+	AssetType   string
 }
 
 func Scan(opts Options) (Result, error) {
@@ -53,39 +54,36 @@ func Scan(opts Options) (Result, error) {
 		workers = 1
 	}
 
-	assetCatalogs, assetNames, assetTypesByName, discoveredAssets, err := collectAssets(opts.Root, opts.Include, opts.Exclude)
+	assetCatalogs, assetNames, discoveredAssets, err := collectAssets(opts.Root, opts.Include, opts.Exclude)
 	if err != nil {
 		return Result{}, err
 	}
-	assetSet := make(map[string]struct{}, len(assetNames))
-	for _, name := range assetNames {
-		assetSet[name] = struct{}{}
-	}
-
-	usedSet, err := collectUsedAssets(opts.Root, opts.Include, opts.Exclude, assetSet, assetTypesByName, workers)
+	usedAssetPaths, err := collectUsedAssets(opts.Root, opts.Include, opts.Exclude, discoveredAssets, workers)
 	if err != nil {
 		return Result{}, err
 	}
 
-	used := make([]string, 0, len(usedSet))
-	for name := range usedSet {
+	usedNames := make(map[string]struct{}, len(assetNames))
+	unusedNames := make(map[string]struct{}, len(assetNames))
+	unusedByFile := make(map[string][]string)
+	for _, asset := range discoveredAssets {
+		if _, ok := usedAssetPaths[asset.AssetPath]; ok {
+			usedNames[asset.Name] = struct{}{}
+			continue
+		}
+		unusedNames[asset.Name] = struct{}{}
+		unusedByFile[asset.CatalogPath] = append(unusedByFile[asset.CatalogPath], asset.AssetPath)
+	}
+	used := make([]string, 0, len(usedNames))
+	for name := range usedNames {
 		used = append(used, name)
 	}
 	slices.Sort(used)
-
-	unused := make([]string, 0, len(assetNames))
-	for _, name := range assetNames {
-		if _, ok := usedSet[name]; !ok {
-			unused = append(unused, name)
-		}
+	unused := make([]string, 0, len(unusedNames))
+	for name := range unusedNames {
+		unused = append(unused, name)
 	}
-	unusedByFile := make(map[string][]string)
-	for _, asset := range discoveredAssets {
-		if _, ok := usedSet[asset.Name]; ok {
-			continue
-		}
-		unusedByFile[asset.CatalogPath] = append(unusedByFile[asset.CatalogPath], asset.AssetPath)
-	}
+	slices.Sort(unused)
 	for file, values := range unusedByFile {
 		slices.Sort(values)
 		unusedByFile[file] = values
@@ -100,10 +98,9 @@ func Scan(opts Options) (Result, error) {
 	}, nil
 }
 
-func collectAssets(root string, include []string, exclude []string) (int, []string, map[string]map[string]struct{}, []discoveredAsset, error) {
+func collectAssets(root string, include []string, exclude []string) (int, []string, []discoveredAsset, error) {
 	assetNames := make([]string, 0, 256)
 	seen := make(map[string]struct{}, 256)
-	assetTypesByName := make(map[string]map[string]struct{}, 256)
 	discoveredAssets := make([]discoveredAsset, 0, 256)
 	assetCatalogs := 0
 
@@ -146,29 +143,26 @@ func collectAssets(root string, include []string, exclude []string) (int, []stri
 					Name:        name,
 					CatalogPath: catalogPath,
 					AssetPath:   path,
+					AssetType:   assetExt,
 				})
 				if _, ok := seen[name]; !ok {
 					seen[name] = struct{}{}
 					assetNames = append(assetNames, name)
 				}
-				if _, ok := assetTypesByName[name]; !ok {
-					assetTypesByName[name] = make(map[string]struct{}, 1)
-				}
-				assetTypesByName[name][assetExt] = struct{}{}
 			}
 		}
 
 		return nil
 	})
 	if err != nil {
-		return 0, nil, nil, nil, err
+		return 0, nil, nil, err
 	}
 
 	slices.Sort(assetNames)
 	slices.SortFunc(discoveredAssets, func(a, b discoveredAsset) int {
 		return strings.Compare(a.AssetPath, b.AssetPath)
 	})
-	return assetCatalogs, assetNames, assetTypesByName, discoveredAssets, nil
+	return assetCatalogs, assetNames, discoveredAssets, nil
 }
 
 func catalogPathForAsset(assetPath string) string {
@@ -183,12 +177,32 @@ func catalogPathForAsset(assetPath string) string {
 	return assetPath[:idx+len(".xcassets")]
 }
 
-func collectUsedAssets(root string, include []string, exclude []string, assetSet map[string]struct{}, assetTypesByName map[string]map[string]struct{}, workers int) (map[string]struct{}, error) {
+func collectUsedAssets(root string, include []string, exclude []string, discoveredAssets []discoveredAsset, workers int) (map[string]struct{}, error) {
 	fileCh := make(chan string, workers*2)
 	errCh := make(chan error, 1)
 	usedSet := make(map[string]struct{}, 128)
 	var usedMu sync.Mutex
-	swiftResourceCandidates := buildSwiftResourceCandidateIndex(assetSet, assetTypesByName)
+	assetPathsByName := make(map[string][]discoveredAsset, len(discoveredAssets))
+	for _, asset := range discoveredAssets {
+		assetPathsByName[asset.Name] = append(assetPathsByName[asset.Name], asset)
+	}
+	swiftResourceCandidates := buildSwiftResourceCandidateIndex(discoveredAssets)
+
+	markUsed := func(sourcePath string, name string) {
+		candidates, ok := assetPathsByName[name]
+		if !ok || len(candidates) == 0 {
+			return
+		}
+		selected := selectClosestAssets(sourcePath, candidates)
+		if len(selected) == 0 {
+			return
+		}
+		usedMu.Lock()
+		for _, asset := range selected {
+			usedSet[asset.AssetPath] = struct{}{}
+		}
+		usedMu.Unlock()
+	}
 
 	var wg sync.WaitGroup
 	for i := 0; i < workers; i++ {
@@ -209,39 +223,26 @@ func collectUsedAssets(root string, include []string, exclude []string, assetSet
 				switch ext {
 				case ".storyboard", ".xib":
 					for _, name := range extractIBAssetReferences(content) {
-						if _, ok := assetSet[name]; !ok {
-							continue
-						}
-						usedMu.Lock()
-						usedSet[name] = struct{}{}
-						usedMu.Unlock()
+						markUsed(path, name)
 					}
 				default:
 					for _, token := range extractSourceWordTokens(content) {
 						if ext == ".swift" {
 							if matchedAssets, ok := swiftResourceCandidates[token]; ok {
-								usedMu.Lock()
-								for _, name := range matchedAssets {
-									usedSet[name] = struct{}{}
+								for _, asset := range selectClosestAssets(path, matchedAssets) {
+									usedMu.Lock()
+									usedSet[asset.AssetPath] = struct{}{}
+									usedMu.Unlock()
 								}
-								usedMu.Unlock()
 								continue
 							}
 						}
-						if _, ok := assetSet[token]; ok {
-							usedMu.Lock()
-							usedSet[token] = struct{}{}
-							usedMu.Unlock()
-						}
+						markUsed(path, token)
 					}
 
 					literals := extractStringLiterals(content)
 					for _, lit := range literals {
-						if _, ok := assetSet[lit]; ok {
-							usedMu.Lock()
-							usedSet[lit] = struct{}{}
-							usedMu.Unlock()
-						}
+						markUsed(path, lit)
 					}
 				}
 
@@ -252,8 +253,8 @@ func collectUsedAssets(root string, include []string, exclude []string, assetSet
 							continue
 						}
 						usedMu.Lock()
-						for _, name := range matchedAssets {
-							usedSet[name] = struct{}{}
+						for _, asset := range selectClosestAssets(path, matchedAssets) {
+							usedSet[asset.AssetPath] = struct{}{}
 						}
 						usedMu.Unlock()
 					}
@@ -358,20 +359,20 @@ func extractSwiftResourceIdentifiers(content string) []string {
 	return identifiers
 }
 
-func buildSwiftResourceCandidateIndex(assetSet map[string]struct{}, assetTypesByName map[string]map[string]struct{}) map[string][]string {
-	index := make(map[string][]string, len(assetSet))
-	for name := range assetSet {
-		for _, candidate := range swiftResourceCandidatesForAsset(name, assetTypesByName[name]) {
+func buildSwiftResourceCandidateIndex(discoveredAssets []discoveredAsset) map[string][]discoveredAsset {
+	index := make(map[string][]discoveredAsset, len(discoveredAssets))
+	for _, asset := range discoveredAssets {
+		for _, candidate := range swiftResourceCandidatesForAsset(asset.Name, asset.AssetType) {
 			existing := index[candidate]
-			if !slices.Contains(existing, name) {
-				index[candidate] = append(existing, name)
+			if !containsAssetPath(existing, asset.AssetPath) {
+				index[candidate] = append(existing, asset)
 			}
 		}
 	}
 	return index
 }
 
-func swiftResourceCandidatesForAsset(assetName string, assetTypes map[string]struct{}) []string {
+func swiftResourceCandidatesForAsset(assetName string, assetType string) []string {
 	candidates := []string{assetName}
 	parts := strings.FieldsFunc(assetName, func(r rune) bool {
 		return !unicode.IsLetter(r) && !unicode.IsDigit(r)
@@ -399,14 +400,14 @@ func swiftResourceCandidatesForAsset(assetName string, assetTypes map[string]str
 
 	// Xcode resource APIs for image assets may drop trailing "Image".
 	// Example: "somethingImage.imageset" => UIImage(resource: .something)
-	if _, isImage := assetTypes["imageset"]; isImage && strings.HasSuffix(assetName, "Image") && len(assetName) > len("Image") {
+	if assetType == "imageset" && strings.HasSuffix(assetName, "Image") && len(assetName) > len("Image") {
 		candidates = append(candidates, strings.TrimSuffix(assetName, "Image"))
 	}
 	// Same suffix behavior for colors and data assets.
-	if _, isColor := assetTypes["colorset"]; isColor && strings.HasSuffix(assetName, "Color") && len(assetName) > len("Color") {
+	if assetType == "colorset" && strings.HasSuffix(assetName, "Color") && len(assetName) > len("Color") {
 		candidates = append(candidates, strings.TrimSuffix(assetName, "Color"))
 	}
-	if _, isData := assetTypes["dataset"]; isData && strings.HasSuffix(assetName, "Data") && len(assetName) > len("Data") {
+	if assetType == "dataset" && strings.HasSuffix(assetName, "Data") && len(assetName) > len("Data") {
 		candidates = append(candidates, strings.TrimSuffix(assetName, "Data"))
 	}
 
@@ -432,6 +433,55 @@ func swiftResourceCandidatesForAsset(assetName string, assetTypes map[string]str
 		}
 	}
 	return out
+}
+
+func containsAssetPath(assets []discoveredAsset, assetPath string) bool {
+	for _, asset := range assets {
+		if asset.AssetPath == assetPath {
+			return true
+		}
+	}
+	return false
+}
+
+func selectClosestAssets(sourcePath string, candidates []discoveredAsset) []discoveredAsset {
+	if len(candidates) <= 1 {
+		return candidates
+	}
+
+	best := make([]discoveredAsset, 0, len(candidates))
+	bestScore := -1
+	for _, candidate := range candidates {
+		score := commonPathPrefixSegments(sourcePath, candidate.CatalogPath)
+		if score > bestScore {
+			bestScore = score
+			best = best[:0]
+			best = append(best, candidate)
+			continue
+		}
+		if score == bestScore {
+			best = append(best, candidate)
+		}
+	}
+	return best
+}
+
+func commonPathPrefixSegments(a string, b string) int {
+	aParts := strings.Split(filepath.Clean(a), string(filepath.Separator))
+	bParts := strings.Split(filepath.Clean(b), string(filepath.Separator))
+	max := len(aParts)
+	if len(bParts) < max {
+		max = len(bParts)
+	}
+
+	count := 0
+	for i := 0; i < max; i++ {
+		if aParts[i] != bParts[i] {
+			break
+		}
+		count++
+	}
+	return count
 }
 
 func swiftIdentifierVariants(name string) []string {

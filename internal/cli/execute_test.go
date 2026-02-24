@@ -300,3 +300,45 @@ func TestAssetsScan_ReadErrorReturnsRuntimeError(t *testing.T) {
 		t.Fatalf("unexpected error code: %v", errVal["code"])
 	}
 }
+
+func TestAssetsUnused_DuplicateNamesAcrossCatalogs(t *testing.T) {
+	root := t.TempDir()
+
+	moduleACatalog := filepath.Join(root, "Modules", "ModuleA", "Assets.xcassets")
+	moduleBCatalog := filepath.Join(root, "Modules", "ModuleB", "Assets.xcassets")
+	if err := os.MkdirAll(filepath.Join(moduleACatalog, "icon.imageset"), 0o755); err != nil {
+		t.Fatalf("mkdir module a asset: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(moduleBCatalog, "icon.imageset"), 0o755); err != nil {
+		t.Fatalf("mkdir module b asset: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "Modules", "ModuleA", "Feature.swift"), []byte(`let _ = UIImage(named: "icon")`), 0o644); err != nil {
+		t.Fatalf("write source: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := Execute([]string{"assets", "unused", "--path", root}, &stdout, &stderr)
+	if exitCode != 3 {
+		t.Fatalf("expected exit code 3, got %d, stderr=%s", exitCode, stderr.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got %s", stderr.String())
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &payload); err != nil {
+		t.Fatalf("expected JSON output, got err: %v, stdout=%s", err, stdout.String())
+	}
+	unused, ok := payload["unused"].([]any)
+	if !ok || len(unused) != 1 || unused[0] != "icon" {
+		t.Fatalf("unexpected unused payload: %#v", payload["unused"])
+	}
+	grouped, ok := payload["unusedByFile"].(map[string]any)
+	if !ok || len(grouped) != 1 {
+		t.Fatalf("expected one grouped unused catalog, got %#v", payload["unusedByFile"])
+	}
+	if _, exists := grouped["Assets.xcassets"]; !exists {
+		t.Fatalf("expected grouped key Assets.xcassets, got %#v", grouped)
+	}
+}
