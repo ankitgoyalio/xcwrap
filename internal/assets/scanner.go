@@ -19,9 +19,21 @@ var sourceExtensions = map[string]struct{}{
 	".storyboard": {},
 }
 
-var swiftResourceRefRe = regexp.MustCompile(`\b(?:(?:UI|NS)?(?:Image|Color)|(?:NS)?DataAsset|Data)\s*\(\s*resource\s*:\s*\.([A-Za-z_][A-Za-z0-9_]*)`)
+var swiftResourceRefRe = regexp.MustCompile(`\b(?:(?:UI|NS)?(?:Image|Color)|(?:NS)?DataAsset)\s*\(\s*resource\s*:\s*\.([A-Za-z_][A-Za-z0-9_]*)`)
 var ibAssetRefRe = regexp.MustCompile(`\b(?:image|selectedImage|highlightedImage|name)\s*=\s*"([A-Za-z0-9._ -]+)"`)
-var sourceWordTokenRe = regexp.MustCompile(`[A-Za-z0-9_][A-Za-z0-9_-]*`)
+var swiftNamedAssetRefRe = regexp.MustCompile(`\b(?:(?:UI|NS)?(?:Image|Color)|(?:NS)?DataAsset)\s*\(\s*(?:named|name)\s*:\s*"([A-Za-z0-9._ -]+)"`)
+var swiftUIAssetRefRe = regexp.MustCompile(`\b(?:Image|Color)\s*\(\s*"([A-Za-z0-9._ -]+)"(?:\s*,[^)]*)?\)`)
+var swiftLabeledResourceMemberRefRe = regexp.MustCompile(`\b(?:icon|moduleIcon|illustration|illustrationName|imageResource)\s*:\s*\.([A-Za-z_][A-Za-z0-9_]*)`)
+var objcImageNamedAssetRefRe = regexp.MustCompile(`\b(?:UI|NS)Image\s+imageNamed:\s*@\"([A-Za-z0-9._ -]+)\"`)
+var objcImageNamedVariableRefRe = regexp.MustCompile(`\b(?:UI|NS)Image\s+imageNamed:\s*([A-Za-z_][A-Za-z0-9_]*)`)
+var objcColorNamedAssetRefRe = regexp.MustCompile(`\b(?:UI|NS)Color\s+colorNamed:\s*@\"([A-Za-z0-9._ -]+)\"`)
+var objcDataAssetNameRefRe = regexp.MustCompile(`\b(?:NS)?DataAsset\b[^\n\r;]*\binitWithName:\s*@\"([A-Za-z0-9._ -]+)\"`)
+var swiftTypedResourceVarRe = regexp.MustCompile(`\b(?:var|let)\s+([A-Za-z_][A-Za-z0-9_]*)\s*:\s*(?:\[[ \t]*)?(?:ImageResource|ColorResource)(?:[ \t]*\])?`)
+var swiftTypedResourceVarInitRe = regexp.MustCompile(`\b(?:var|let)\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*\[\s*(?:ImageResource|ColorResource)\s*\]\s*\(\s*\)`)
+var swiftTypedResourceScalarVarRe = regexp.MustCompile(`\b(?:var|let)\s+([A-Za-z_][A-Za-z0-9_]*)\s*:\s*(?:ImageResource|ColorResource)\s*[!?]?`)
+var swiftResourceReturnTypeRe = regexp.MustCompile(`(?:func|var)\s+[A-Za-z_][A-Za-z0-9_]*[^{\n\r]*->\s*(?:ImageResource|ColorResource)|\bvar\s+[A-Za-z_][A-Za-z0-9_]*\s*:\s*(?:ImageResource|ColorResource)\s*\{`)
+var swiftReturnEnumMemberRe = regexp.MustCompile(`\breturn\s+\.([A-Za-z_][A-Za-z0-9_]*)`)
+var swiftEnumMemberRefRe = regexp.MustCompile(`\.\s*([A-Za-z_][A-Za-z0-9_]*)`)
 
 type Options struct {
 	Root    string
@@ -226,27 +238,23 @@ func collectUsedAssets(root string, include []string, exclude []string, discover
 						markUsed(path, name)
 					}
 				default:
-					for _, token := range extractSourceWordTokens(content) {
-						if ext == ".swift" {
-							if matchedAssets, ok := swiftResourceCandidates[token]; ok {
-								for _, asset := range selectClosestAssets(path, matchedAssets) {
-									usedMu.Lock()
-									usedSet[asset.AssetPath] = struct{}{}
-									usedMu.Unlock()
-								}
-								continue
-							}
-						}
-						markUsed(path, token)
-					}
-
-					literals := extractStringLiterals(content)
-					for _, lit := range literals {
-						markUsed(path, lit)
+					for _, name := range extractExplicitSourceAssetReferences(content) {
+						markUsed(path, name)
 					}
 				}
 
 				if ext == ".swift" {
+					for _, identifier := range extractSwiftTypedResourceIdentifiers(content) {
+						matchedAssets, ok := swiftResourceCandidates[identifier]
+						if !ok {
+							continue
+						}
+						usedMu.Lock()
+						for _, asset := range selectClosestAssets(path, matchedAssets) {
+							usedSet[asset.AssetPath] = struct{}{}
+						}
+						usedMu.Unlock()
+					}
 					for _, identifier := range extractSwiftResourceIdentifiers(content) {
 						matchedAssets, ok := swiftResourceCandidates[identifier]
 						if !ok {
@@ -339,10 +347,6 @@ func extractIBAssetReferences(content string) []string {
 	return out
 }
 
-func extractSourceWordTokens(content string) []string {
-	return sourceWordTokenRe.FindAllString(content, -1)
-}
-
 func extractSwiftResourceIdentifiers(content string) []string {
 	matches := swiftResourceRefRe.FindAllStringSubmatch(content, -1)
 	if len(matches) == 0 {
@@ -357,6 +361,202 @@ func extractSwiftResourceIdentifiers(content string) []string {
 		identifiers = append(identifiers, m[1])
 	}
 	return identifiers
+}
+
+func extractSwiftTypedResourceIdentifiers(content string) []string {
+	varMatches := swiftTypedResourceVarRe.FindAllStringSubmatch(content, -1)
+	initMatches := swiftTypedResourceVarInitRe.FindAllStringSubmatch(content, -1)
+	scalarVarMatches := swiftTypedResourceScalarVarRe.FindAllStringSubmatch(content, -1)
+	hasResourceReturn := swiftResourceReturnTypeRe.MatchString(content)
+	if len(varMatches) == 0 && len(initMatches) == 0 && len(scalarVarMatches) == 0 && !hasResourceReturn {
+		return nil
+	}
+
+	mergedMatches := append([][]string{}, varMatches...)
+	mergedMatches = append(mergedMatches, initMatches...)
+	mergedMatches = append(mergedMatches, scalarVarMatches...)
+
+	seenIdentifiers := make(map[string]struct{})
+	identifiers := make([]string, 0, len(mergedMatches))
+	for _, m := range mergedMatches {
+		if len(m) < 2 || strings.TrimSpace(m[1]) == "" {
+			continue
+		}
+		varName := m[1]
+		for _, identifier := range extractEnumIdentifiersForSwiftVar(content, varName) {
+			if _, exists := seenIdentifiers[identifier]; exists {
+				continue
+			}
+			seenIdentifiers[identifier] = struct{}{}
+			identifiers = append(identifiers, identifier)
+		}
+	}
+
+	if hasResourceReturn {
+		for _, m := range swiftReturnEnumMemberRe.FindAllStringSubmatch(content, -1) {
+			if len(m) < 2 {
+				continue
+			}
+			identifier := strings.TrimSpace(m[1])
+			if identifier == "" {
+				continue
+			}
+			if _, exists := seenIdentifiers[identifier]; exists {
+				continue
+			}
+			seenIdentifiers[identifier] = struct{}{}
+			identifiers = append(identifiers, identifier)
+		}
+	}
+
+	return identifiers
+}
+
+func extractEnumIdentifiersForSwiftVar(content string, varName string) []string {
+	seen := make(map[string]struct{})
+	out := make([]string, 0, 8)
+
+	appendIdentifier := func(identifier string) {
+		if identifier == "" {
+			return
+		}
+		if _, ok := seen[identifier]; ok {
+			return
+		}
+		seen[identifier] = struct{}{}
+		out = append(out, identifier)
+	}
+
+	assignRe := regexp.MustCompile(`\b` + regexp.QuoteMeta(varName) + `(?:\s*:\s*[^=\n\r]+)?\s*=\s*\[([^\]]*)\]`)
+	for _, m := range assignRe.FindAllStringSubmatch(content, -1) {
+		if len(m) < 2 {
+			continue
+		}
+		for _, enumMatch := range swiftEnumMemberRefRe.FindAllStringSubmatch(m[1], -1) {
+			if len(enumMatch) < 2 {
+				continue
+			}
+			appendIdentifier(strings.TrimSpace(enumMatch[1]))
+		}
+	}
+
+	appendRe := regexp.MustCompile(`\b` + regexp.QuoteMeta(varName) + `\s*\.append\s*\(\s*\.([A-Za-z_][A-Za-z0-9_]*)`)
+	for _, m := range appendRe.FindAllStringSubmatch(content, -1) {
+		if len(m) < 2 {
+			continue
+		}
+		appendIdentifier(strings.TrimSpace(m[1]))
+	}
+
+	insertRe := regexp.MustCompile(`\b` + regexp.QuoteMeta(varName) + `\s*\.insert\s*\(\s*\.([A-Za-z_][A-Za-z0-9_]*)`)
+	for _, m := range insertRe.FindAllStringSubmatch(content, -1) {
+		if len(m) < 2 {
+			continue
+		}
+		appendIdentifier(strings.TrimSpace(m[1]))
+	}
+
+	scalarAssignRe := regexp.MustCompile(`\b` + regexp.QuoteMeta(varName) + `(?:\s*:\s*[^=\n\r]+)?\s*=\s*\.([A-Za-z_][A-Za-z0-9_]*)`)
+	for _, m := range scalarAssignRe.FindAllStringSubmatch(content, -1) {
+		if len(m) < 2 {
+			continue
+		}
+		appendIdentifier(strings.TrimSpace(m[1]))
+	}
+
+	return out
+}
+
+func extractExplicitSourceAssetReferences(content string) []string {
+	results := make([]string, 0, 16)
+	seen := make(map[string]struct{})
+
+	appendMatches := func(re *regexp.Regexp) {
+		matches := re.FindAllStringSubmatch(content, -1)
+		for _, m := range matches {
+			if len(m) < 2 {
+				continue
+			}
+			name := strings.TrimSpace(m[1])
+			if name == "" {
+				continue
+			}
+			if _, exists := seen[name]; exists {
+				continue
+			}
+			seen[name] = struct{}{}
+			results = append(results, name)
+		}
+	}
+
+	appendMatches(swiftNamedAssetRefRe)
+	appendMatches(swiftUIAssetRefRe)
+	appendMatches(swiftLabeledResourceMemberRefRe)
+	appendMatches(objcImageNamedAssetRefRe)
+	appendMatches(objcColorNamedAssetRefRe)
+	appendMatches(objcDataAssetNameRefRe)
+	for _, name := range extractObjCImageNamedVariableReferences(content) {
+		if _, exists := seen[name]; exists {
+			continue
+		}
+		seen[name] = struct{}{}
+		results = append(results, name)
+	}
+
+	return results
+}
+
+func extractObjCImageNamedVariableReferences(content string) []string {
+	varMatches := objcImageNamedVariableRefRe.FindAllStringSubmatch(content, -1)
+	if len(varMatches) == 0 {
+		return nil
+	}
+
+	seenNames := make(map[string]struct{})
+	names := make([]string, 0, len(varMatches))
+	for _, m := range varMatches {
+		if len(m) < 2 || strings.TrimSpace(m[1]) == "" {
+			continue
+		}
+		varName := m[1]
+		assignRe := regexp.MustCompile(`\b` + regexp.QuoteMeta(varName) + `\s*=\s*([^;]+);`)
+		assignMatches := assignRe.FindAllStringSubmatch(content, -1)
+		for _, assignMatch := range assignMatches {
+			if len(assignMatch) < 2 {
+				continue
+			}
+			for _, literal := range extractObjCStringLiterals(assignMatch[1]) {
+				if _, exists := seenNames[literal]; exists {
+					continue
+				}
+				seenNames[literal] = struct{}{}
+				names = append(names, literal)
+			}
+		}
+	}
+
+	return names
+}
+
+func extractObjCStringLiterals(content string) []string {
+	re := regexp.MustCompile(`@\"([A-Za-z0-9._ -]+)\"`)
+	matches := re.FindAllStringSubmatch(content, -1)
+	if len(matches) == 0 {
+		return nil
+	}
+
+	out := make([]string, 0, len(matches))
+	for _, m := range matches {
+		if len(m) < 2 {
+			continue
+		}
+		name := strings.TrimSpace(m[1])
+		if name == "" {
+			continue
+		}
+		out = append(out, name)
+	}
+	return out
 }
 
 func buildSwiftResourceCandidateIndex(discoveredAssets []discoveredAsset) map[string][]discoveredAsset {

@@ -173,6 +173,39 @@ func TestAssetsUnused_ReturnsExitCode3WhenUnusedFound(t *testing.T) {
 	}
 }
 
+func TestAssetsUnused_LowConfidenceTokenAndStringDoNotSuppressUnused(t *testing.T) {
+	root := t.TempDir()
+	catalog := filepath.Join(root, "Assets.xcassets")
+	if err := os.MkdirAll(filepath.Join(catalog, "ghost.imageset"), 0o755); err != nil {
+		t.Fatalf("mkdir asset set: %v", err)
+	}
+	source := `// ghost appears only as comment/token/string
+let ghost = "ghost"
+`
+	if err := os.WriteFile(filepath.Join(root, "Main.swift"), []byte(source), 0o644); err != nil {
+		t.Fatalf("write source: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := Execute([]string{"assets", "unused", "--path", root}, &stdout, &stderr)
+	if exitCode != 3 {
+		t.Fatalf("expected exit code 3, got %d, stderr=%s", exitCode, stderr.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got %s", stderr.String())
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &payload); err != nil {
+		t.Fatalf("expected JSON output, got err: %v", err)
+	}
+	unused, ok := payload["unused"].([]any)
+	if !ok || len(unused) != 1 || unused[0] != "ghost" {
+		t.Fatalf("unexpected unused payload: %#v", payload["unused"])
+	}
+}
+
 func TestAssetsScan_TableOutput_IsNotJSON(t *testing.T) {
 	root := t.TempDir()
 	catalog := filepath.Join(root, "Assets.xcassets")

@@ -246,14 +246,14 @@ func TestScan_FindsStoryboardImageReferences(t *testing.T) {
 	}
 }
 
-func TestScan_FindsSwiftDotSymbolReference(t *testing.T) {
+func TestScan_FindsSwiftUIImageResourceReference_WithIdentifier(t *testing.T) {
 	root := t.TempDir()
 	catalog := filepath.Join(root, "App", "Assets.xcassets")
 	if err := os.MkdirAll(filepath.Join(catalog, "betaSubscriptionIcon.imageset"), 0o755); err != nil {
 		t.Fatalf("mkdir asset set: %v", err)
 	}
 	swiftPath := filepath.Join(root, "App", "Subscription.swift")
-	if err := os.WriteFile(swiftPath, []byte("return .betaSubscriptionIcon"), 0o644); err != nil {
+	if err := os.WriteFile(swiftPath, []byte("let image = UIImage(resource: .betaSubscriptionIcon)"), 0o644); err != nil {
 		t.Fatalf("write swift source: %v", err)
 	}
 
@@ -286,15 +286,264 @@ func TestScan_FindsSwiftResourceReference_ForLeadingDigitAssetName(t *testing.T)
 	}
 }
 
-func TestScan_FindsSwiftDotSymbolReference_ForDashedAssetNameCamelCase(t *testing.T) {
+func TestScan_FindsSwiftUIImageResourceReference_ForDashedAssetNameCamelCase(t *testing.T) {
 	root := t.TempDir()
 	catalog := filepath.Join(root, "App", "Assets.xcassets")
 	if err := os.MkdirAll(filepath.Join(catalog, "FSM-Onboarding-2.imageset"), 0o755); err != nil {
 		t.Fatalf("mkdir asset set: %v", err)
 	}
 	swiftPath := filepath.Join(root, "App", "PageViewController.swift")
-	if err := os.WriteFile(swiftPath, []byte("let images: [ImageResource] = [.fsmOnboarding2]"), 0o644); err != nil {
+	if err := os.WriteFile(swiftPath, []byte("let image = UIImage(resource: .fsmOnboarding2)"), 0o644); err != nil {
 		t.Fatalf("write swift source: %v", err)
+	}
+
+	res, err := Scan(Options{Root: root, Workers: 2})
+	if err != nil {
+		t.Fatalf("scan error: %v", err)
+	}
+	if len(res.UnusedAssets) != 0 {
+		t.Fatalf("unexpected unused assets: %#v", res.UnusedAssets)
+	}
+}
+
+func TestScan_DoesNotMarkAssetUsedFromGenericTokenOrStringLiteral(t *testing.T) {
+	root := t.TempDir()
+	catalog := filepath.Join(root, "App", "Assets.xcassets")
+	if err := os.MkdirAll(filepath.Join(catalog, "orphanIcon.imageset"), 0o755); err != nil {
+		t.Fatalf("mkdir asset set: %v", err)
+	}
+
+	swiftPath := filepath.Join(root, "App", "Noise.swift")
+	content := `// orphanIcon appears as an unrelated token and string
+let value = "orphanIcon"
+let orphanIcon = "debug-only"
+`
+	if err := os.WriteFile(swiftPath, []byte(content), 0o644); err != nil {
+		t.Fatalf("write swift source: %v", err)
+	}
+
+	res, err := Scan(Options{Root: root, Workers: 2})
+	if err != nil {
+		t.Fatalf("scan error: %v", err)
+	}
+
+	if len(res.UsedAssets) != 0 {
+		t.Fatalf("expected no used assets, got %#v", res.UsedAssets)
+	}
+	if len(res.UnusedAssets) != 1 || res.UnusedAssets[0] != "orphanIcon" {
+		t.Fatalf("expected orphanIcon to remain unused, got %#v", res.UnusedAssets)
+	}
+}
+
+func TestScan_FindsSwiftUIImageAndColorStringReference_WithBundleArgument(t *testing.T) {
+	root := t.TempDir()
+	catalog := filepath.Join(root, "App", "Assets.xcassets")
+	if err := os.MkdirAll(filepath.Join(catalog, "hero.imageset"), 0o755); err != nil {
+		t.Fatalf("mkdir image asset set: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(catalog, "brand.colorset"), 0o755); err != nil {
+		t.Fatalf("mkdir color asset set: %v", err)
+	}
+
+	swiftPath := filepath.Join(root, "App", "View.swift")
+	content := `import SwiftUI
+let image = Image("hero", bundle: .main)
+let color = Color("brand", bundle: .main)
+`
+	if err := os.WriteFile(swiftPath, []byte(content), 0o644); err != nil {
+		t.Fatalf("write swift source: %v", err)
+	}
+
+	res, err := Scan(Options{Root: root, Workers: 2})
+	if err != nil {
+		t.Fatalf("scan error: %v", err)
+	}
+	if len(res.UnusedAssets) != 0 {
+		t.Fatalf("unexpected unused assets: %#v", res.UnusedAssets)
+	}
+}
+
+func TestScan_FindsSwiftTypedImageResourceIdentifiers(t *testing.T) {
+	root := t.TempDir()
+	catalog := filepath.Join(root, "App", "Assets.xcassets")
+	if err := os.MkdirAll(filepath.Join(catalog, "dropDownAttach.imageset"), 0o755); err != nil {
+		t.Fatalf("mkdir image asset set: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(catalog, "unused.imageset"), 0o755); err != nil {
+		t.Fatalf("mkdir image asset set: %v", err)
+	}
+
+	swiftPath := filepath.Join(root, "App", "View.swift")
+	content := `var icons: [ImageResource] = [.dropDownEdit]
+icons.append(.dropDownAttach)
+let image = UIImage(resource: icons[0])
+`
+	if err := os.WriteFile(swiftPath, []byte(content), 0o644); err != nil {
+		t.Fatalf("write swift source: %v", err)
+	}
+
+	res, err := Scan(Options{Root: root, Workers: 2})
+	if err != nil {
+		t.Fatalf("scan error: %v", err)
+	}
+	if len(res.UsedAssets) != 1 || res.UsedAssets[0] != "dropDownAttach" {
+		t.Fatalf("unexpected used assets: %#v", res.UsedAssets)
+	}
+	if len(res.UnusedAssets) != 1 || res.UnusedAssets[0] != "unused" {
+		t.Fatalf("unexpected unused assets: %#v", res.UnusedAssets)
+	}
+}
+
+func TestScan_FindsSwiftTypedImageResourceIdentifiers_WithInferredArrayType(t *testing.T) {
+	root := t.TempDir()
+	catalog := filepath.Join(root, "App", "Assets.xcassets")
+	if err := os.MkdirAll(filepath.Join(catalog, "dropDownAttachment.imageset"), 0o755); err != nil {
+		t.Fatalf("mkdir image asset set: %v", err)
+	}
+
+	swiftPath := filepath.Join(root, "App", "View.swift")
+	content := `private var dropDownIcons = [ImageResource]()
+dropDownIcons = [.dropDownAttachment]
+let image = UIImage(resource: dropDownIcons[0])
+`
+	if err := os.WriteFile(swiftPath, []byte(content), 0o644); err != nil {
+		t.Fatalf("write swift source: %v", err)
+	}
+
+	res, err := Scan(Options{Root: root, Workers: 2})
+	if err != nil {
+		t.Fatalf("scan error: %v", err)
+	}
+	if len(res.UnusedAssets) != 0 {
+		t.Fatalf("unexpected unused assets: %#v", res.UnusedAssets)
+	}
+}
+
+func TestScan_FindsSwiftTypedImageResourceIdentifiers_WithInlineTypedAssignment(t *testing.T) {
+	root := t.TempDir()
+	catalog := filepath.Join(root, "App", "Assets.xcassets")
+	if err := os.MkdirAll(filepath.Join(catalog, "dropDownCall.imageset"), 0o755); err != nil {
+		t.Fatalf("mkdir image asset set: %v", err)
+	}
+
+	swiftPath := filepath.Join(root, "App", "View.swift")
+	content := `private let dropDownIconsValues: [ImageResource] = [.dropDownCall, .dropDownEmail]
+private var dropDownIcons: [ImageResource] = [.dropDownCall]
+let image = UIImage(resource: dropDownIconsValues[0])
+`
+	if err := os.WriteFile(swiftPath, []byte(content), 0o644); err != nil {
+		t.Fatalf("write swift source: %v", err)
+	}
+
+	res, err := Scan(Options{Root: root, Workers: 2})
+	if err != nil {
+		t.Fatalf("scan error: %v", err)
+	}
+	if len(res.UnusedAssets) != 0 {
+		t.Fatalf("unexpected unused assets: %#v", res.UnusedAssets)
+	}
+}
+
+func TestScan_FindsSwiftTypedImageResourceIdentifiers_FromTypedReturn(t *testing.T) {
+	root := t.TempDir()
+	catalog := filepath.Join(root, "App", "Assets.xcassets")
+	if err := os.MkdirAll(filepath.Join(catalog, "betaSubscriptionIcon.imageset"), 0o755); err != nil {
+		t.Fatalf("mkdir image asset set: %v", err)
+	}
+
+	swiftPath := filepath.Join(root, "App", "Subscription.swift")
+	content := `func getCurrentEditionIcon() -> ImageResource {
+    return .betaSubscriptionIcon
+}
+`
+	if err := os.WriteFile(swiftPath, []byte(content), 0o644); err != nil {
+		t.Fatalf("write swift source: %v", err)
+	}
+
+	res, err := Scan(Options{Root: root, Workers: 2})
+	if err != nil {
+		t.Fatalf("scan error: %v", err)
+	}
+	if len(res.UnusedAssets) != 0 {
+		t.Fatalf("unexpected unused assets: %#v", res.UnusedAssets)
+	}
+}
+
+func TestScan_FindsSwiftTypedImageResourceIdentifiers_FromScalarAssignment(t *testing.T) {
+	root := t.TempDir()
+	catalog := filepath.Join(root, "App", "Assets.xcassets")
+	if err := os.MkdirAll(filepath.Join(catalog, "billingAddressIcon.imageset"), 0o755); err != nil {
+		t.Fatalf("mkdir image asset set: %v", err)
+	}
+
+	swiftPath := filepath.Join(root, "App", "CommonUtil.swift")
+	content := `func getIcon() -> ImageResource {
+    var icon: ImageResource = .fsmOnboarding1
+    icon = .billingAddressIcon
+    return icon
+}
+`
+	if err := os.WriteFile(swiftPath, []byte(content), 0o644); err != nil {
+		t.Fatalf("write swift source: %v", err)
+	}
+
+	res, err := Scan(Options{Root: root, Workers: 2})
+	if err != nil {
+		t.Fatalf("scan error: %v", err)
+	}
+	if len(res.UnusedAssets) != 0 {
+		t.Fatalf("unexpected unused assets: %#v", res.UnusedAssets)
+	}
+}
+
+func TestScan_FindsSwiftLabeledResourceMemberReferences(t *testing.T) {
+	root := t.TempDir()
+	catalog := filepath.Join(root, "App", "Assets.xcassets")
+	if err := os.MkdirAll(filepath.Join(catalog, "dashboardTSCountIcon.imageset"), 0o755); err != nil {
+		t.Fatalf("mkdir image asset set: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(catalog, "emptyDashboardIllustration.imageset"), 0o755); err != nil {
+		t.Fatalf("mkdir image asset set: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(catalog, "dropDownMarkAsSent.imageset"), 0o755); err != nil {
+		t.Fatalf("mkdir image asset set: %v", err)
+	}
+
+	swiftPath := filepath.Join(root, "App", "Home.swift")
+	content := `timeSheetCountView.setData(icon: .dashboardTSCountIcon, fieldName: "x", value: "y")
+emptyListIllustrationView.setData(illustration: .emptyDashboardIllustration, title: "x", body: "y")
+let action = makeAction(title: "x", imageResource: .dropDownMarkAsSent) { _ in }
+`
+	if err := os.WriteFile(swiftPath, []byte(content), 0o644); err != nil {
+		t.Fatalf("write swift source: %v", err)
+	}
+
+	res, err := Scan(Options{Root: root, Workers: 2})
+	if err != nil {
+		t.Fatalf("scan error: %v", err)
+	}
+	if len(res.UnusedAssets) != 0 {
+		t.Fatalf("unexpected unused assets: %#v", res.UnusedAssets)
+	}
+}
+
+func TestScan_FindsObjCImageNamedVariableReferences(t *testing.T) {
+	root := t.TempDir()
+	catalog := filepath.Join(root, "App", "Assets.xcassets")
+	if err := os.MkdirAll(filepath.Join(catalog, "ipad_key_remove.imageset"), 0o755); err != nil {
+		t.Fatalf("mkdir image asset set: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(catalog, "iphone_key_remove.imageset"), 0o755); err != nil {
+		t.Fatalf("mkdir image asset set: %v", err)
+	}
+
+	objcPath := filepath.Join(root, "App", "VTPasscodeUtilConstants.m")
+	content := `+ (UIImage *)removeKeyImage {
+    NSString *removeKey = isCurrentDeviceTypeiPad() ? @"ipad_key_remove" : @"iphone_key_remove";
+    return [UIImage imageNamed:removeKey];
+}`
+	if err := os.WriteFile(objcPath, []byte(content), 0o644); err != nil {
+		t.Fatalf("write objc source: %v", err)
 	}
 
 	res, err := Scan(Options{Root: root, Workers: 2})
