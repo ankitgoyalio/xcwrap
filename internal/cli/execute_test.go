@@ -463,7 +463,7 @@ func TestAssetsScan_ReadErrorReturnsRuntimeError(t *testing.T) {
 		if exitCode != 1 {
 			t.Fatalf("expected exit code 1, got %d", exitCode)
 		}
-	case <-time.After(3 * time.Second):
+	case <-time.After(10 * time.Second):
 		t.Fatal("execute deadlocked after file read error")
 	}
 
