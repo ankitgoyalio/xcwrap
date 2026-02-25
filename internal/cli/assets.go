@@ -590,6 +590,8 @@ func deletePruneTargets(root string, paths []string) error {
 		if !isPrunableAssetSetPath(path) {
 			return fmt.Errorf("refusing to delete non-asset-set path: %s", path)
 		}
+		// Remove the original path (the symlink entry itself), not the resolved
+		// absPath target.
 		if err := os.RemoveAll(path); err != nil {
 			return fmt.Errorf("failed to delete %s: %w", path, err)
 		}
