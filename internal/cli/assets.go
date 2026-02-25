@@ -202,7 +202,6 @@ func newAssetsPruneCommand(ctx *runContext) *cobra.Command {
 	var path string
 	var apply bool
 	var force bool
-	workers := defaultWorkers()
 
 	cmd := &cobra.Command{
 		Use:   "prune",
@@ -222,7 +221,7 @@ func newAssetsPruneCommand(ctx *runContext) *cobra.Command {
 			scan, err := assets.Scan(assets.Options{
 				Root:    resolvedPath,
 				Exclude: append([]string{}, defaultExcludedPaths...),
-				Workers: workers,
+				Workers: defaultWorkers(),
 			})
 			if err != nil {
 				return err
