@@ -565,12 +565,20 @@ func deletePruneTargets(root string, paths []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to resolve prune root %q: %w", root, err)
 	}
+	rootAbs, err = filepath.EvalSymlinks(rootAbs)
+	if err != nil {
+		return fmt.Errorf("failed to resolve prune root symlinks %q: %w", root, err)
+	}
 	rootIsCatalog := strings.EqualFold(filepath.Ext(rootAbs), ".xcassets")
 
 	for _, path := range paths {
 		absPath, err := filepath.Abs(path)
 		if err != nil {
 			return fmt.Errorf("failed to resolve prune target %q: %w", path, err)
+		}
+		absPath, err = filepath.EvalSymlinks(absPath)
+		if err != nil {
+			return fmt.Errorf("failed to resolve prune target symlinks %q: %w", path, err)
 		}
 		rel, err := filepath.Rel(rootAbs, absPath)
 		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {

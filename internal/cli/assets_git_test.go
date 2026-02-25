@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -42,5 +43,35 @@ func TestDeletePruneTargets_AllowsCatalogRootAsPruneRoot(t *testing.T) {
 	}
 	if _, err := os.Stat(target); !os.IsNotExist(err) {
 		t.Fatalf("expected prune target to be removed, stat err=%v", err)
+	}
+}
+
+func TestDeletePruneTargets_RejectsSymlinkTargetOutsideRoot(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink permissions vary on windows")
+	}
+
+	root := t.TempDir()
+	catalogRoot := filepath.Join(root, "Assets.xcassets")
+	if err := os.MkdirAll(catalogRoot, 0o755); err != nil {
+		t.Fatalf("mkdir catalog root: %v", err)
+	}
+
+	outside := filepath.Join(t.TempDir(), "outside.imageset")
+	if err := os.MkdirAll(outside, 0o755); err != nil {
+		t.Fatalf("mkdir outside target: %v", err)
+	}
+
+	linkPath := filepath.Join(catalogRoot, "linked.imageset")
+	if err := os.Symlink(outside, linkPath); err != nil {
+		t.Fatalf("create symlink target: %v", err)
+	}
+
+	err := deletePruneTargets(root, []string{linkPath})
+	if err == nil {
+		t.Fatalf("expected symlink escape to be rejected")
+	}
+	if !strings.Contains(err.Error(), "outside root") {
+		t.Fatalf("expected outside-root rejection, got %v", err)
 	}
 }
