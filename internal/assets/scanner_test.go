@@ -567,6 +567,8 @@ func TestScan_FindsSwiftTypedImageResourceIdentifiers(t *testing.T) {
 	}
 
 	swiftPath := filepath.Join(root, "App", "View.swift")
+	// .dropDownEdit intentionally has no matching asset set; this verifies
+	// unresolved typed references are ignored instead of creating false usage.
 	content := `var icons: [ImageResource] = [.dropDownEdit]
 icons.append(.dropDownAttach)
 let image = UIImage(resource: icons[0])
