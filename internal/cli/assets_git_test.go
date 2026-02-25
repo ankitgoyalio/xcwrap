@@ -78,3 +78,31 @@ func TestDeletePruneTargets_RejectsSymlinkTargetOutsideRoot(t *testing.T) {
 		t.Fatalf("expected symlink to remain after rejection, stat err=%v", statErr)
 	}
 }
+
+func TestDeletePruneTargets_AllowsSymlinkedCatalogRoot(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink permissions vary on windows")
+	}
+
+	root := t.TempDir()
+	realCatalogRoot := filepath.Join(root, "real-catalog-root")
+	if err := os.MkdirAll(realCatalogRoot, 0o755); err != nil {
+		t.Fatalf("mkdir real catalog root: %v", err)
+	}
+	symlinkCatalogRoot := filepath.Join(root, "LinkedAssets.xcassets")
+	if err := os.Symlink(realCatalogRoot, symlinkCatalogRoot); err != nil {
+		t.Fatalf("create catalog root symlink: %v", err)
+	}
+
+	target := filepath.Join(symlinkCatalogRoot, "unused.imageset")
+	if err := os.MkdirAll(target, 0o755); err != nil {
+		t.Fatalf("mkdir prune target: %v", err)
+	}
+
+	if err := deletePruneTargets(symlinkCatalogRoot, []string{target}); err != nil {
+		t.Fatalf("delete prune targets: %v", err)
+	}
+	if _, err := os.Stat(target); !os.IsNotExist(err) {
+		t.Fatalf("expected prune target to be removed, stat err=%v", err)
+	}
+}

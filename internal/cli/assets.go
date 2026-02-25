@@ -564,11 +564,12 @@ func deletePruneTargets(root string, paths []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to resolve prune root %q: %w", root, err)
 	}
-	rootAbs, err = filepath.EvalSymlinks(rootAbs)
+	rootIsCatalog := strings.EqualFold(filepath.Ext(rootAbs), ".xcassets")
+	resolvedRootAbs, err := filepath.EvalSymlinks(rootAbs)
 	if err != nil {
 		return fmt.Errorf("failed to resolve prune root symlinks %q: %w", root, err)
 	}
-	rootIsCatalog := strings.EqualFold(filepath.Ext(rootAbs), ".xcassets")
+	rootIsCatalog = rootIsCatalog || strings.EqualFold(filepath.Ext(resolvedRootAbs), ".xcassets")
 
 	for _, path := range paths {
 		absPath, err := filepath.Abs(path)
@@ -579,7 +580,7 @@ func deletePruneTargets(root string, paths []string) error {
 		if err != nil {
 			return fmt.Errorf("failed to resolve prune target symlinks %q: %w", path, err)
 		}
-		rel, err := filepath.Rel(rootAbs, absPath)
+		rel, err := filepath.Rel(resolvedRootAbs, absPath)
 		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
 			return fmt.Errorf("refusing to delete path outside root: %s", path)
 		}
