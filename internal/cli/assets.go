@@ -224,6 +224,8 @@ func newAssetsPruneCommand(ctx *runContext) *cobra.Command {
 				return usageError{Message: "--force requires --apply"}
 			}
 
+			// Prune intentionally scans with conservative defaults to keep delete
+			// candidates deterministic across local/CI runs.
 			scan, err := assets.Scan(assets.Options{
 				Root:    resolvedPath,
 				Exclude: append([]string{}, defaultExcludedPaths...),
