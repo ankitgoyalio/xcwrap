@@ -902,6 +902,9 @@ func TestScan_ReadErrorDoesNotDeadlock(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("permission model differs on windows")
 	}
+	if os.Getuid() == 0 {
+		t.Skip("root ignores file permission bits")
+	}
 
 	root := t.TempDir()
 	catalog := filepath.Join(root, "Assets.xcassets")
