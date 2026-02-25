@@ -579,6 +579,7 @@ func deletePruneTargets(root string, paths []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to resolve prune root %q: %w", root, err)
 	}
+	rootIsCatalog := strings.EqualFold(filepath.Ext(rootAbs), ".xcassets")
 
 	for _, path := range paths {
 		absPath, err := filepath.Abs(path)
@@ -589,7 +590,8 @@ func deletePruneTargets(root string, paths []string) error {
 		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
 			return fmt.Errorf("refusing to delete path outside root: %s", path)
 		}
-		if !strings.Contains(filepath.ToSlash(rel), ".xcassets/") {
+		relSlash := filepath.ToSlash(rel)
+		if !rootIsCatalog && !strings.Contains(relSlash, ".xcassets/") {
 			return fmt.Errorf("refusing to delete non-catalog path: %s", path)
 		}
 		if !isPrunableAssetSetPath(path) {
