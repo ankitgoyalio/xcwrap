@@ -170,13 +170,18 @@ func newAssetsUnusedCommand(ctx *runContext) *cobra.Command {
 			}
 
 			pruneCandidates := collectPruneTargets(scan.UnusedByFile)
+			unusedByFile := buildUnusedByFilePayload(scan.UnusedByFile)
+			unusedSummary := scan.UnusedAssets
+			if len(unusedSummary) == 0 && len(unusedByFile) > 0 {
+				unusedSummary = flattenUnusedByFileNames(unusedByFile)
+			}
 			result := unusedResult{
 				Command:             "assets unused",
 				Path:                resolvedPath,
-				UnusedCount:         len(scan.UnusedAssets),
+				UnusedCount:         len(unusedSummary),
 				PruneCandidateCount: len(pruneCandidates),
-				Unused:              scan.UnusedAssets,
-				UnusedByFile:        buildUnusedByFilePayload(scan.UnusedByFile),
+				Unused:              unusedSummary,
+				UnusedByFile:        unusedByFile,
 			}
 			if err := renderUnusedResult(ctx.stdout, ctx.output, result); err != nil {
 				return err
@@ -465,6 +470,19 @@ func buildUnusedByFilePayload(grouped map[string][]string) map[string]unusedFile
 	}
 
 	return out
+}
+
+func flattenUnusedByFileNames(grouped map[string]unusedFileResult) []string {
+	if len(grouped) == 0 {
+		return []string{}
+	}
+
+	all := make([]string, 0, len(grouped))
+	for _, entry := range grouped {
+		all = append(all, entry.UnusedAssets...)
+	}
+	slices.Sort(all)
+	return slices.Compact(all)
 }
 
 func unusedAssetDisplayNames(assetPaths []string) []string {
