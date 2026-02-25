@@ -12,6 +12,7 @@ import (
 )
 
 func TestScan_FindsUsedAndUnusedAssets(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	catalog := filepath.Join(root, "App", "Assets.xcassets")
 	usedSet := filepath.Join(catalog, "icon.imageset")
@@ -51,6 +52,7 @@ func TestScan_FindsUsedAndUnusedAssets(t *testing.T) {
 }
 
 func TestScan_ReturnsErrorForInvalidUTF8SourceFile(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	catalog := filepath.Join(root, "App", "Assets.xcassets")
 	if err := os.MkdirAll(filepath.Join(catalog, "icon.imageset"), 0o755); err != nil {
@@ -75,6 +77,7 @@ func TestScan_ReturnsErrorForInvalidUTF8SourceFile(t *testing.T) {
 }
 
 func TestScan_FindsSwiftUIImageResourceReference(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	catalog := filepath.Join(root, "App", "Assets.xcassets")
 	usedSet := filepath.Join(catalog, "icon.imageset")
@@ -101,6 +104,7 @@ func TestScan_FindsSwiftUIImageResourceReference(t *testing.T) {
 }
 
 func TestScan_FindsSwiftUIImageResourceReference_WithImageSuffixTrim(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	catalog := filepath.Join(root, "App", "Assets.xcassets")
 	usedSet := filepath.Join(catalog, "somethingImage.imageset")
@@ -127,6 +131,7 @@ func TestScan_FindsSwiftUIImageResourceReference_WithImageSuffixTrim(t *testing.
 }
 
 func TestScan_FindsSwiftUIImageResourceReference_LowercaseImageNoTrim(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	catalog := filepath.Join(root, "App", "Assets.xcassets")
 	usedSet := filepath.Join(catalog, "somethingimage.imageset")
@@ -153,6 +158,7 @@ func TestScan_FindsSwiftUIImageResourceReference_LowercaseImageNoTrim(t *testing
 }
 
 func TestScan_FindsSwiftUIColorResourceReference_WithColorSuffixTrim(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	catalog := filepath.Join(root, "App", "Assets.xcassets")
 	usedSet := filepath.Join(catalog, "brandPrimaryColor.colorset")
@@ -179,6 +185,7 @@ func TestScan_FindsSwiftUIColorResourceReference_WithColorSuffixTrim(t *testing.
 }
 
 func TestScan_FindsSwiftUIColorResourceReference_LowercaseColorNoTrim(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	catalog := filepath.Join(root, "App", "Assets.xcassets")
 	usedSet := filepath.Join(catalog, "brandprimarycolor.colorset")
@@ -205,6 +212,7 @@ func TestScan_FindsSwiftUIColorResourceReference_LowercaseColorNoTrim(t *testing
 }
 
 func TestScan_FindsSwiftDataAssetResourceReference_WithDataSuffixTrim(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	catalog := filepath.Join(root, "App", "Assets.xcassets")
 	usedSet := filepath.Join(catalog, "configData.dataset")
@@ -231,6 +239,7 @@ func TestScan_FindsSwiftDataAssetResourceReference_WithDataSuffixTrim(t *testing
 }
 
 func TestScan_FindsStoryboardImageReferences(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	catalog := filepath.Join(root, "App", "Assets.xcassets")
 	if err := os.MkdirAll(filepath.Join(catalog, "appointmentsIcon.imageset"), 0o755); err != nil {
@@ -273,6 +282,7 @@ func TestScan_FindsStoryboardImageReferences(t *testing.T) {
 }
 
 func TestScan_IgnoresGenericStoryboardNameAttributes(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	catalog := filepath.Join(root, "App", "Assets.xcassets")
 	if err := os.MkdirAll(filepath.Join(catalog, "capability.imageset"), 0o755); err != nil {
@@ -302,6 +312,7 @@ func TestScan_IgnoresGenericStoryboardNameAttributes(t *testing.T) {
 }
 
 func TestScan_FindsIBImageTagNameReferences(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	catalog := filepath.Join(root, "App", "Assets.xcassets")
 	if err := os.MkdirAll(filepath.Join(catalog, "starRatingIcon.imageset"), 0o755); err != nil {
@@ -328,6 +339,7 @@ func TestScan_FindsIBImageTagNameReferences(t *testing.T) {
 }
 
 func TestScan_FindsIBColorTagNameReferences(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	catalog := filepath.Join(root, "App", "Assets.xcassets")
 	if err := os.MkdirAll(filepath.Join(catalog, "notificationBackgroundViewColor.colorset"), 0o755); err != nil {
@@ -362,6 +374,7 @@ func TestScan_FindsIBColorTagNameReferences(t *testing.T) {
 }
 
 func TestScan_IBColorReference_DoesNotMarkSameNameImageAssetUsed(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	catalog := filepath.Join(root, "App", "Assets.xcassets")
 	imageAssetPath := filepath.Join(catalog, "logo.imageset")
@@ -414,6 +427,7 @@ func TestScan_IBColorReference_DoesNotMarkSameNameImageAssetUsed(t *testing.T) {
 }
 
 func TestScan_FindsSwiftUIImageResourceReference_WithIdentifier(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	catalog := filepath.Join(root, "App", "Assets.xcassets")
 	if err := os.MkdirAll(filepath.Join(catalog, "betaSubscriptionIcon.imageset"), 0o755); err != nil {
@@ -434,6 +448,7 @@ func TestScan_FindsSwiftUIImageResourceReference_WithIdentifier(t *testing.T) {
 }
 
 func TestScan_FindsSwiftResourceReference_ForLeadingDigitAssetName(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	catalog := filepath.Join(root, "App", "Assets.xcassets")
 	if err := os.MkdirAll(filepath.Join(catalog, "2checkoutPaymentIcon.imageset"), 0o755); err != nil {
@@ -454,6 +469,7 @@ func TestScan_FindsSwiftResourceReference_ForLeadingDigitAssetName(t *testing.T)
 }
 
 func TestScan_FindsSwiftUIImageResourceReference_ForDashedAssetNameCamelCase(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	catalog := filepath.Join(root, "App", "Assets.xcassets")
 	if err := os.MkdirAll(filepath.Join(catalog, "FSM-Onboarding-2.imageset"), 0o755); err != nil {
@@ -474,6 +490,7 @@ func TestScan_FindsSwiftUIImageResourceReference_ForDashedAssetNameCamelCase(t *
 }
 
 func TestScan_DoesNotMarkAssetUsedFromGenericTokenOrStringLiteral(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	catalog := filepath.Join(root, "App", "Assets.xcassets")
 	if err := os.MkdirAll(filepath.Join(catalog, "orphanIcon.imageset"), 0o755); err != nil {
@@ -503,6 +520,7 @@ let orphanIcon = "debug-only"
 }
 
 func TestScan_FindsSwiftUIImageAndColorStringReference_WithBundleArgument(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	catalog := filepath.Join(root, "App", "Assets.xcassets")
 	if err := os.MkdirAll(filepath.Join(catalog, "hero.imageset"), 0o755); err != nil {
@@ -531,6 +549,7 @@ let color = Color("brand", bundle: .main)
 }
 
 func TestScan_FindsSwiftTypedImageResourceIdentifiers(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	catalog := filepath.Join(root, "App", "Assets.xcassets")
 	if err := os.MkdirAll(filepath.Join(catalog, "dropDownAttach.imageset"), 0o755); err != nil {
@@ -562,6 +581,7 @@ let image = UIImage(resource: icons[0])
 }
 
 func TestScan_FindsSwiftTypedImageResourceIdentifiers_WithInferredArrayType(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	catalog := filepath.Join(root, "App", "Assets.xcassets")
 	if err := os.MkdirAll(filepath.Join(catalog, "dropDownAttachment.imageset"), 0o755); err != nil {
@@ -587,6 +607,7 @@ let image = UIImage(resource: dropDownIcons[0])
 }
 
 func TestScan_FindsSwiftTypedImageResourceIdentifiers_WithInlineTypedAssignment(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	catalog := filepath.Join(root, "App", "Assets.xcassets")
 	if err := os.MkdirAll(filepath.Join(catalog, "dropDownCall.imageset"), 0o755); err != nil {
@@ -612,6 +633,7 @@ let image = UIImage(resource: dropDownIconsValues[0])
 }
 
 func TestScan_FindsSwiftTypedImageResourceIdentifiers_FromTypedReturn(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	catalog := filepath.Join(root, "App", "Assets.xcassets")
 	if err := os.MkdirAll(filepath.Join(catalog, "betaSubscriptionIcon.imageset"), 0o755); err != nil {
@@ -637,6 +659,7 @@ func TestScan_FindsSwiftTypedImageResourceIdentifiers_FromTypedReturn(t *testing
 }
 
 func TestScan_ScopesSwiftTypedReturnEnumMembersToResourceContexts(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	catalog := filepath.Join(root, "App", "Assets.xcassets")
 	if err := os.MkdirAll(filepath.Join(catalog, "betaSubscriptionIcon.imageset"), 0o755); err != nil {
@@ -676,6 +699,7 @@ func currentState() -> UnrelatedState {
 }
 
 func TestScan_ExplicitImageNamedReference_DoesNotMarkSameNameColorAssetUsed(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	catalog := filepath.Join(root, "App", "Assets.xcassets")
 	imageAssetPath := filepath.Join(catalog, "logo.imageset")
@@ -716,6 +740,7 @@ func TestScan_ExplicitImageNamedReference_DoesNotMarkSameNameColorAssetUsed(t *t
 }
 
 func TestScan_FindsSwiftTypedImageResourceIdentifiers_FromScalarAssignment(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	catalog := filepath.Join(root, "App", "Assets.xcassets")
 	if err := os.MkdirAll(filepath.Join(catalog, "billingAddressIcon.imageset"), 0o755); err != nil {
@@ -743,6 +768,7 @@ func TestScan_FindsSwiftTypedImageResourceIdentifiers_FromScalarAssignment(t *te
 }
 
 func TestScan_DoesNotInferAssetUsageFromLabeledResourceLikeMembers(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	catalog := filepath.Join(root, "App", "Assets.xcassets")
 	if err := os.MkdirAll(filepath.Join(catalog, "dashboardTSCountIcon.imageset"), 0o755); err != nil {
@@ -777,6 +803,7 @@ let action = makeAction(title: "x", imageResource: .dropDownMarkAsSent) { _ in }
 }
 
 func TestScan_DoesNotTreatLabeledEnumMembersAsAssetReferences(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	catalog := filepath.Join(root, "App", "Assets.xcassets")
 	if err := os.MkdirAll(filepath.Join(catalog, "warning.imageset"), 0o755); err != nil {
@@ -809,6 +836,7 @@ render(icon: .warning)
 }
 
 func TestScan_FindsLabeledMembersWhenLabelIsTypedAsImageResource(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	catalog := filepath.Join(root, "App", "Assets.xcassets")
 	if err := os.MkdirAll(filepath.Join(catalog, "dashboardTSCountIcon.imageset"), 0o755); err != nil {
@@ -841,6 +869,7 @@ func TestScan_FindsLabeledMembersWhenLabelIsTypedAsImageResource(t *testing.T) {
 }
 
 func TestScan_FindsObjCImageNamedVariableReferences(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	catalog := filepath.Join(root, "App", "Assets.xcassets")
 	if err := os.MkdirAll(filepath.Join(catalog, "ipad_key_remove.imageset"), 0o755); err != nil {
@@ -869,6 +898,7 @@ func TestScan_FindsObjCImageNamedVariableReferences(t *testing.T) {
 }
 
 func TestScan_ReadErrorDoesNotDeadlock(t *testing.T) {
+	t.Parallel()
 	if runtime.GOOS == "windows" {
 		t.Skip("permission model differs on windows")
 	}
@@ -917,6 +947,7 @@ func TestScan_ReadErrorDoesNotDeadlock(t *testing.T) {
 }
 
 func TestScan_DuplicateAssetNamesAcrossCatalogs(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 
 	moduleACatalog := filepath.Join(root, "Modules", "ModuleA", "Assets.xcassets")
@@ -960,6 +991,7 @@ func TestScan_DuplicateAssetNamesAcrossCatalogs(t *testing.T) {
 }
 
 func TestScan_DuplicateAssetNamesAcrossCatalogs_DoesNotEmitSameSummaryAsUsedAndUnused(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 
 	moduleACatalog := filepath.Join(root, "Modules", "ModuleA", "Assets.xcassets")
@@ -990,6 +1022,7 @@ func TestScan_DuplicateAssetNamesAcrossCatalogs_DoesNotEmitSameSummaryAsUsedAndU
 }
 
 func TestScan_IgnoresAssetSetsOutsideCatalogs(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 
 	catalog := filepath.Join(root, "App", "Assets.xcassets")
@@ -1028,30 +1061,35 @@ func TestScan_IgnoresAssetSetsOutsideCatalogs(t *testing.T) {
 }
 
 func TestMatchesAny_GlobPatternMatchesExpectedPath(t *testing.T) {
+	t.Parallel()
 	if !matchesAny("App/Main.swift", []string{"App/*.swift"}) {
 		t.Fatalf("expected glob to match path")
 	}
 }
 
 func TestMatchesAny_GlobstarPatternMatchesNestedPath(t *testing.T) {
+	t.Parallel()
 	if !matchesAny("Sources/App/Features/Home/View.swift", []string{"Sources/**/*.swift"}) {
 		t.Fatalf("expected globstar pattern to match nested path")
 	}
 }
 
 func TestMatchesAny_DirectoryPatternMatchesSubtree(t *testing.T) {
+	t.Parallel()
 	if !matchesAny("ExternalLib/Assets.xcassets/icon.imageset", []string{"ExternalLib/"}) {
 		t.Fatalf("expected directory pattern to match subtree")
 	}
 }
 
 func TestMatchesAny_DoesNotUseSubstringFallback(t *testing.T) {
+	t.Parallel()
 	if matchesAny("MyExternalLib/Assets.xcassets/icon.imageset", []string{"ExternalLib/"}) {
 		t.Fatalf("did not expect substring overlap to match")
 	}
 }
 
 func TestSwiftResourceCandidatesForAsset_HandlesMultibyteCamelCaseParts(t *testing.T) {
+	t.Parallel()
 	candidates := swiftResourceCandidatesForAsset("primary_äpfel", "imageset")
 
 	if !slices.Contains(candidates, "primaryÄpfel") {
