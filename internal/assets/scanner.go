@@ -245,7 +245,7 @@ func collectUsedAssets(root string, include []string, exclude []string, discover
 		assetPathsByTypeAndName[typeKey] = append(assetPathsByTypeAndName[typeKey], asset)
 	}
 	swiftResourceCandidates := buildSwiftResourceCandidateIndex(discoveredAssets)
-	swiftResourceLabelAssetTypes, swiftSourceContents, err := collectSwiftResourceArgumentLabelAssetTypes(root, include, exclude)
+	swiftResourceLabelAssetTypes, swiftResourceLabelPatterns, swiftSourceContents, err := collectSwiftResourceArgumentLabelAssetTypes(root, include, exclude)
 	if err != nil {
 		return nil, err
 	}
@@ -299,7 +299,7 @@ func collectUsedAssets(root string, include []string, exclude []string, discover
 						markUsed(path, ref.Name, ref.AssetType)
 					}
 				default:
-					for _, ref := range extractExplicitSourceAssetReferences(content, swiftResourceLabelAssetTypes) {
+					for _, ref := range extractExplicitSourceAssetReferences(content, swiftResourceLabelAssetTypes, swiftResourceLabelPatterns) {
 						markUsed(path, ref.Name, ref.AssetType)
 					}
 				}
@@ -619,7 +619,7 @@ func extractEnumIdentifiersForSwiftVar(content string, patterns swiftEnumIdentif
 	return out
 }
 
-func extractExplicitSourceAssetReferences(content string, labelAssetTypes map[string]map[string]struct{}) []sourceAssetReference {
+func extractExplicitSourceAssetReferences(content string, labelAssetTypes map[string]map[string]struct{}, labelPatterns map[string]*regexp.Regexp) []sourceAssetReference {
 	results := make([]sourceAssetReference, 0, 16)
 	seen := make(map[string]struct{})
 
@@ -647,7 +647,7 @@ func extractExplicitSourceAssetReferences(content string, labelAssetTypes map[st
 	appendTypedMatches(swiftNamedDataAssetRefRe, "dataset")
 	appendTypedMatches(swiftUIImageAssetRefRe, "imageset")
 	appendTypedMatches(swiftUIColorAssetRefRe, "colorset")
-	for _, ref := range extractSwiftLabeledResourceArgumentReferences(content, labelAssetTypes) {
+	for _, ref := range extractSwiftLabeledResourceArgumentReferences(content, labelAssetTypes, labelPatterns) {
 		key := sourceAssetTypeKey(ref.Name, ref.AssetType)
 		if _, exists := seen[key]; exists {
 			continue
@@ -670,7 +670,7 @@ func extractExplicitSourceAssetReferences(content string, labelAssetTypes map[st
 	return results
 }
 
-func collectSwiftResourceArgumentLabelAssetTypes(root string, include []string, exclude []string) (map[string]map[string]struct{}, map[string]string, error) {
+func collectSwiftResourceArgumentLabelAssetTypes(root string, include []string, exclude []string) (map[string]map[string]struct{}, map[string]*regexp.Regexp, map[string]string, error) {
 	labels := make(map[string]map[string]struct{})
 	swiftSources := make(map[string]string)
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
@@ -736,9 +736,13 @@ func collectSwiftResourceArgumentLabelAssetTypes(root string, include []string, 
 		return nil
 	})
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
-	return labels, swiftSources, nil
+	labelPatterns := make(map[string]*regexp.Regexp, len(labels))
+	for label := range labels {
+		labelPatterns[label] = regexp.MustCompile(`\b` + regexp.QuoteMeta(label) + `\s*:\s*\.([A-Za-z_][A-Za-z0-9_]*)`)
+	}
+	return labels, labelPatterns, swiftSources, nil
 }
 
 func resourceTypeToAssetType(resourceType string) string {
@@ -752,7 +756,7 @@ func resourceTypeToAssetType(resourceType string) string {
 	}
 }
 
-func extractSwiftLabeledResourceArgumentReferences(content string, labelAssetTypes map[string]map[string]struct{}) []sourceAssetReference {
+func extractSwiftLabeledResourceArgumentReferences(content string, labelAssetTypes map[string]map[string]struct{}, labelPatterns map[string]*regexp.Regexp) []sourceAssetReference {
 	if len(labelAssetTypes) == 0 {
 		return nil
 	}
@@ -766,7 +770,10 @@ func extractSwiftLabeledResourceArgumentReferences(content string, labelAssetTyp
 	seen := make(map[string]struct{})
 	out := make([]sourceAssetReference, 0, 8)
 	for _, label := range labels {
-		re := regexp.MustCompile(`\b` + regexp.QuoteMeta(label) + `\s*:\s*\.([A-Za-z_][A-Za-z0-9_]*)`)
+		re, ok := labelPatterns[label]
+		if !ok || re == nil {
+			continue
+		}
 		for _, m := range re.FindAllStringSubmatch(content, -1) {
 			if len(m) < 2 {
 				continue
