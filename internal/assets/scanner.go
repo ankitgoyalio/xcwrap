@@ -95,9 +95,12 @@ func Scan(opts Options) (Result, error) {
 		assetNamesSet[summaryName] = struct{}{}
 		if _, ok := usedAssetPaths[asset.AssetPath]; ok {
 			usedNames[summaryName] = struct{}{}
+			delete(unusedNames, summaryName)
 			continue
 		}
-		unusedNames[summaryName] = struct{}{}
+		if _, alreadyUsed := usedNames[summaryName]; !alreadyUsed {
+			unusedNames[summaryName] = struct{}{}
+		}
 		unusedByFile[asset.CatalogPath] = append(unusedByFile[asset.CatalogPath], asset.AssetPath)
 	}
 	assetNames := make([]string, 0, len(assetNamesSet))

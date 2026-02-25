@@ -937,8 +937,11 @@ func TestScan_DuplicateAssetNamesAcrossCatalogs(t *testing.T) {
 		t.Fatalf("scan error: %v", err)
 	}
 
-	if len(res.UnusedAssets) != 1 || res.UnusedAssets[0] != "icon" {
-		t.Fatalf("expected icon to remain in unused summary, got %#v", res.UnusedAssets)
+	if len(res.UsedAssets) != 1 || res.UsedAssets[0] != "icon" {
+		t.Fatalf("expected icon to be marked used in summary, got %#v", res.UsedAssets)
+	}
+	if len(res.UnusedAssets) != 0 {
+		t.Fatalf("expected no overlapping summary entries in unused list, got %#v", res.UnusedAssets)
 	}
 	if len(res.UnusedByFile) != 1 {
 		t.Fatalf("expected one unused catalog, got %#v", res.UnusedByFile)
@@ -952,6 +955,36 @@ func TestScan_DuplicateAssetNamesAcrossCatalogs(t *testing.T) {
 	}
 	if _, exists := res.UnusedByFile[moduleACatalog]; exists {
 		t.Fatalf("expected module A catalog to be used, but found in unusedByFile: %#v", res.UnusedByFile[moduleACatalog])
+	}
+}
+
+func TestScan_DuplicateAssetNamesAcrossCatalogs_DoesNotEmitSameSummaryAsUsedAndUnused(t *testing.T) {
+	root := t.TempDir()
+
+	moduleACatalog := filepath.Join(root, "Modules", "ModuleA", "Assets.xcassets")
+	moduleBCatalog := filepath.Join(root, "Modules", "ModuleB", "Assets.xcassets")
+	if err := os.MkdirAll(filepath.Join(moduleACatalog, "icon.imageset"), 0o755); err != nil {
+		t.Fatalf("mkdir module a asset: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(moduleBCatalog, "icon.imageset"), 0o755); err != nil {
+		t.Fatalf("mkdir module b asset: %v", err)
+	}
+
+	sourcePath := filepath.Join(root, "Modules", "ModuleA", "Feature.swift")
+	if err := os.WriteFile(sourcePath, []byte(`let _ = UIImage(named: "icon")`), 0o644); err != nil {
+		t.Fatalf("write source: %v", err)
+	}
+
+	res, err := Scan(Options{Root: root, Workers: 2})
+	if err != nil {
+		t.Fatalf("scan error: %v", err)
+	}
+
+	if len(res.UsedAssets) != 1 || res.UsedAssets[0] != "icon" {
+		t.Fatalf("expected icon in used summary, got %#v", res.UsedAssets)
+	}
+	if len(res.UnusedAssets) != 0 {
+		t.Fatalf("expected no overlapping names in unused summary, got %#v", res.UnusedAssets)
 	}
 }
 
