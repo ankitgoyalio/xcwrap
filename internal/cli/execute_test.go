@@ -458,12 +458,17 @@ func TestAssetsScan_ReadErrorReturnsRuntimeError(t *testing.T) {
 		done <- Execute([]string{"assets", "scan", "--path", root}, &stdout, &stderr)
 	}()
 
+	timeout := 10 * time.Second
+	if testing.Short() {
+		timeout = 3 * time.Second
+	}
+
 	select {
 	case exitCode := <-done:
 		if exitCode != 1 {
 			t.Fatalf("expected exit code 1, got %d", exitCode)
 		}
-	case <-time.After(10 * time.Second):
+	case <-time.After(timeout):
 		t.Fatal("execute deadlocked after file read error")
 	}
 
