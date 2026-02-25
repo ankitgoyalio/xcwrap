@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -1041,5 +1042,13 @@ func TestMatchesAny_DirectoryPatternMatchesSubtree(t *testing.T) {
 func TestMatchesAny_DoesNotUseSubstringFallback(t *testing.T) {
 	if matchesAny("MyExternalLib/Assets.xcassets/icon.imageset", []string{"ExternalLib/"}) {
 		t.Fatalf("did not expect substring overlap to match")
+	}
+}
+
+func TestSwiftResourceCandidatesForAsset_HandlesMultibyteCamelCaseParts(t *testing.T) {
+	candidates := swiftResourceCandidatesForAsset("primary_äpfel", "imageset")
+
+	if !slices.Contains(candidates, "primaryÄpfel") {
+		t.Fatalf("expected utf-8 aware camel candidate, got %#v", candidates)
 	}
 }

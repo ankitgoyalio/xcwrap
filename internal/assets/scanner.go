@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"unicode"
+	"unicode/utf8"
 )
 
 var sourceExtensions = map[string]struct{}{
@@ -855,10 +856,9 @@ func swiftResourceCandidatesForAsset(assetName string, assetType string) []strin
 		if p == "" {
 			continue
 		}
-		b.WriteString(strings.ToUpper(p[:1]))
-		if len(p) > 1 {
-			b.WriteString(p[1:])
-		}
+		r, size := utf8.DecodeRuneInString(p)
+		b.WriteRune(unicode.ToUpper(r))
+		b.WriteString(p[size:])
 	}
 
 	camel := b.String()
