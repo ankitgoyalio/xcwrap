@@ -61,7 +61,11 @@ func defaultOutput() string {
 	if !ok || strings.TrimSpace(v) == "" {
 		return outputJSON
 	}
-	return strings.ToLower(strings.TrimSpace(v))
+	normalized := strings.ToLower(strings.TrimSpace(v))
+	if !isAllowedOutput(normalized) {
+		return outputJSON
+	}
+	return normalized
 }
 
 func isAllowedOutput(v string) bool {
