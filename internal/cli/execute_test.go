@@ -426,6 +426,9 @@ func TestAssetsScan_ReadErrorReturnsRuntimeError(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("permission model differs on windows")
 	}
+	if runtime.GOOS != "windows" && os.Geteuid() == 0 {
+		t.Skip("permission test is unreliable when running as root")
+	}
 
 	root := t.TempDir()
 	catalog := filepath.Join(root, "Assets.xcassets")
