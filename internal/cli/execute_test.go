@@ -135,7 +135,8 @@ func TestAssetsScan_InvalidPath_ReturnsRuntimeError(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 
-	exitCode := Execute([]string{"assets", "scan", "--path", "/tmp/xcwrap-path-that-should-not-exist-12345"}, &stdout, &stderr)
+	invalidPath := filepath.Join(t.TempDir(), "xcwrap-path-that-should-not-exist")
+	exitCode := Execute([]string{"assets", "scan", "--path", invalidPath}, &stdout, &stderr)
 	if exitCode != 1 {
 		t.Fatalf("expected exit code 1, got %d", exitCode)
 	}
