@@ -113,6 +113,9 @@ func TestAssetsScan_ExpandsTildePath(t *testing.T) {
 	}
 
 	t.Setenv("HOME", homeDir)
+	if runtime.GOOS == "windows" {
+		t.Setenv("USERPROFILE", homeDir)
+	}
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
