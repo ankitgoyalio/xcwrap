@@ -13,10 +13,19 @@ import (
 )
 
 func TestAssetsScan_DefaultJSONOutput(t *testing.T) {
+	root := t.TempDir()
+	catalog := filepath.Join(root, "Assets.xcassets")
+	if err := os.MkdirAll(filepath.Join(catalog, "used.imageset"), 0o755); err != nil {
+		t.Fatalf("mkdir asset set: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "Main.swift"), []byte(`let _ = UIImage(named: "used")`), 0o644); err != nil {
+		t.Fatalf("write source: %v", err)
+	}
+
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 
-	exitCode := Execute([]string{"assets", "scan"}, &stdout, &stderr)
+	exitCode := Execute([]string{"assets", "scan", "--path", root}, &stdout, &stderr)
 	if exitCode != 0 {
 		t.Fatalf("expected exit code 0, got %d, stderr=%s", exitCode, stderr.String())
 	}
