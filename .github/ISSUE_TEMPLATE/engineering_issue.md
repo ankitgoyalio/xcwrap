@@ -16,9 +16,11 @@ assignees: ''
 
 ## Current gap in the code
 
-- File: `<absolute-or-repo-relative-path>`
+- File: `<repo-relative-path>`
 - Lines: `<start-end>`
 - Gap: <What the current implementation does and why it is insufficient.>
+
+Use file paths relative to the repository root to avoid machine-specific noise.
 
 ## Proposed change
 
