@@ -63,8 +63,8 @@ func runAssetScan(path string, include []string, exclude []string, workers int) 
 		return "", nil, nil, assets.Result{}, usageError{Message: "invalid value for --workers: must be >= 1"}
 	}
 
-	sortedInclude := append([]string{}, include...)
-	sortedExclude := append([]string{}, exclude...)
+	sortedInclude := slices.Clone(include)
+	sortedExclude := slices.Clone(exclude)
 	slices.Sort(sortedInclude)
 	slices.Sort(sortedExclude)
 	if err := validateGlobPatterns(sortedInclude, "include"); err != nil {
