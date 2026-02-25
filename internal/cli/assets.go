@@ -561,9 +561,13 @@ func deletePruneTargets(paths []string) error {
 
 func requireCleanGitWorkingTree(root string) error {
 	cmd := exec.Command("git", "-C", root, "status", "--porcelain")
-	out, err := cmd.Output()
+	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("failed to check git working tree: %w", err)
+		message := strings.TrimSpace(string(out))
+		if message == "" {
+			return fmt.Errorf("failed to check git working tree: %w", err)
+		}
+		return fmt.Errorf("failed to check git working tree: %w: %s", err, message)
 	}
 	if len(bytes.TrimSpace(out)) > 0 {
 		return fmt.Errorf("git working tree is not clean; commit/stash changes or rerun with --force")
