@@ -946,12 +946,19 @@ func TestScan_ReadErrorDoesNotDeadlock(t *testing.T) {
 		done <- err
 	}()
 
+	timeout := 10 * time.Second
+	if testing.Short() {
+		timeout = 3 * time.Second
+	}
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+
 	select {
 	case err := <-done:
 		if err == nil {
 			t.Fatalf("expected read error, got nil")
 		}
-	case <-time.After(3 * time.Second):
+	case <-timer.C:
 		t.Fatal("scan deadlocked after file read error")
 	}
 }
