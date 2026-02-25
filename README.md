@@ -2,7 +2,7 @@
 
 Fast, lightweight CLI for Xcode `.xc*` workflows, starting with `.xcassets`.
 
-## V0 Scaffold
+## V1 Assets Flow
 
 Implemented command tree:
 
