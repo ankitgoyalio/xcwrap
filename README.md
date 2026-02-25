@@ -30,13 +30,13 @@ Both commands now print these fields explicitly in JSON output.
 
 ## Run Locally
 
-```bash
+```fish
 go run ./cmd/xcwrap --help
 go run ./cmd/xcwrap assets scan
 ```
 
 ## Test
 
-```bash
+```fish
 go test ./...
 ```
