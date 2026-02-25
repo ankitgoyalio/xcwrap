@@ -909,8 +909,8 @@ func TestScan_ReadErrorDoesNotDeadlock(t *testing.T) {
 		t.Fatalf("mkdir asset set: %v", err)
 	}
 
-	unreadable := filepath.Join(root, "000_unreadable.swift")
-	if err := os.WriteFile(unreadable, []byte(`let _ = UIImage(named: "used")`), 0o644); err != nil {
+	unreadable := filepath.Join(root, "000_unreadable.m")
+	if err := os.WriteFile(unreadable, []byte(`UIImage *img = [UIImage imageNamed:@"used"];`), 0o644); err != nil {
 		t.Fatalf("write unreadable source: %v", err)
 	}
 	if err := os.Chmod(unreadable, 0o000); err != nil {
