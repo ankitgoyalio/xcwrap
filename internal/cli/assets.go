@@ -63,8 +63,8 @@ func runAssetScan(path string, include []string, exclude []string, workers int) 
 		return "", nil, nil, assets.Result{}, usageError{Message: "invalid value for --workers: must be >= 1"}
 	}
 
-	sortedInclude := slices.Clone(include)
-	sortedExclude := slices.Clone(exclude)
+	sortedInclude := normalizePatterns(include)
+	sortedExclude := normalizePatterns(exclude)
 	slices.Sort(sortedInclude)
 	slices.Sort(sortedExclude)
 	if err := validateGlobPatterns(sortedInclude, "include"); err != nil {
@@ -85,6 +85,18 @@ func runAssetScan(path string, include []string, exclude []string, workers int) 
 	}
 
 	return resolvedPath, sortedInclude, sortedExclude, scan, nil
+}
+
+func normalizePatterns(patterns []string) []string {
+	normalized := make([]string, 0, len(patterns))
+	for _, pattern := range patterns {
+		trimmed := strings.TrimSpace(pattern)
+		if trimmed == "" {
+			continue
+		}
+		normalized = append(normalized, trimmed)
+	}
+	return normalized
 }
 
 func newAssetsScanCommand(ctx *runContext) *cobra.Command {
