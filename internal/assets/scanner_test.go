@@ -791,6 +791,8 @@ func TestScan_DoesNotInferAssetUsageFromLabeledResourceLikeMembers(t *testing.T)
 	}
 
 	swiftPath := filepath.Join(root, "App", "Home.swift")
+	// These labels are not considered typed image-resource contexts unless the
+	// parameter type declaration is discovered in scanned sources.
 	content := `timeSheetCountView.setData(icon: .dashboardTSCountIcon, fieldName: "x", value: "y")
 emptyListIllustrationView.setData(illustration: .emptyDashboardIllustration, title: "x", body: "y")
 let action = makeAction(title: "x", imageResource: .dropDownMarkAsSent) { _ in }
