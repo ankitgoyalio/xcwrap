@@ -2,12 +2,17 @@ package cli
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 )
 
 func TestRequireCleanGitWorkingTree_IncludesGitDiagnosticWhenCheckFails(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+
 	root := t.TempDir()
 
 	err := requireCleanGitWorkingTree(root)
