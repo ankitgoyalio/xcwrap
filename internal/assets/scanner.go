@@ -31,6 +31,7 @@ var swiftUIColorAssetRefRe = regexp.MustCompile(`\bColor\s*\(\s*"([A-Za-z0-9._ -
 var swiftResourceParameterRe = regexp.MustCompile(`(?:^|[,(])\s*([A-Za-z_][A-Za-z0-9_]*|_)\s*(?:[A-Za-z_][A-Za-z0-9_]*)?\s*:\s*(?:\[[ \t]*)?(ImageResource|ColorResource)(?:[ \t]*\])?\s*[!?]?`)
 var objcImageNamedAssetRefRe = regexp.MustCompile(`\b(?:UI|NS)Image\s+imageNamed:\s*@\"([A-Za-z0-9._ -]+)\"`)
 var objcImageNamedVariableRefRe = regexp.MustCompile(`\b(?:UI|NS)Image\s+imageNamed:\s*([A-Za-z_][A-Za-z0-9_]*)`)
+var objcStringLiteralRe = regexp.MustCompile(`@\"([A-Za-z0-9._ -]+)\"`)
 var objcColorNamedAssetRefRe = regexp.MustCompile(`\b(?:UI|NS)Color\s+colorNamed:\s*@\"([A-Za-z0-9._ -]+)\"`)
 var objcDataAssetNameRefRe = regexp.MustCompile(`\b(?:NS)?DataAsset\b[^\n\r;]*\binitWithName:\s*@\"([A-Za-z0-9._ -]+)\"`)
 var swiftTypedResourceVarRe = regexp.MustCompile(`\b(?:var|let)\s+([A-Za-z_][A-Za-z0-9_]*)\s*:\s*(?:\[[ \t]*)?(?:ImageResource|ColorResource)(?:[ \t]*\])?`)
@@ -807,8 +808,7 @@ func extractObjCImageNamedVariableReferences(content string) []string {
 }
 
 func extractObjCStringLiterals(content string) []string {
-	re := regexp.MustCompile(`@\"([A-Za-z0-9._ -]+)\"`)
-	matches := re.FindAllStringSubmatch(content, -1)
+	matches := objcStringLiteralRe.FindAllStringSubmatch(content, -1)
 	if len(matches) == 0 {
 		return nil
 	}
