@@ -22,7 +22,7 @@ var sourceExtensions = map[string]struct{}{
 
 var swiftResourceRefRe = regexp.MustCompile(`\b(?:(?:UI|NS)?(?:Image|Color)|(?:NS)?DataAsset)\s*\(\s*resource\s*:\s*\.([A-Za-z_][A-Za-z0-9_]*)`)
 var ibImageStateRefRe = regexp.MustCompile(`\b(?:image|selectedImage|highlightedImage)\s*=\s*"([A-Za-z0-9._ -]+)"`)
-var ibNamedAssetTagRefRe = regexp.MustCompile(`<(?:image|color)\b[^>]*\bname\s*=\s*"([A-Za-z0-9._ -]+)"`)
+var ibNamedAssetTagRefRe = regexp.MustCompile(`<(image|color)\b[^>]*\bname\s*=\s*"([A-Za-z0-9._ -]+)"`)
 var swiftNamedImageAssetRefRe = regexp.MustCompile(`\b(?:UI|NS)?Image\s*\(\s*(?:named|name)\s*:\s*"([A-Za-z0-9._ -]+)"`)
 var swiftNamedColorAssetRefRe = regexp.MustCompile(`\b(?:UI|NS)?Color\s*\(\s*(?:named|name)\s*:\s*"([A-Za-z0-9._ -]+)"`)
 var swiftNamedDataAssetRefRe = regexp.MustCompile(`\b(?:NS)?DataAsset\s*\(\s*(?:named|name)\s*:\s*"([A-Za-z0-9._ -]+)"`)
@@ -290,8 +290,8 @@ func collectUsedAssets(root string, include []string, exclude []string, discover
 				ext := strings.ToLower(filepath.Ext(path))
 				switch ext {
 				case ".storyboard", ".xib":
-					for _, name := range extractIBAssetReferences(content) {
-						markUsed(path, name, "")
+					for _, ref := range extractIBAssetReferences(content) {
+						markUsed(path, ref.Name, ref.AssetType)
 					}
 				default:
 					for _, ref := range extractExplicitSourceAssetReferences(content, swiftResourceLabelAssetTypes) {
@@ -384,33 +384,49 @@ func collectUsedAssets(root string, include []string, exclude []string, discover
 	return usedSet, nil
 }
 
-func extractIBAssetReferences(content string) []string {
+func extractIBAssetReferences(content string) []sourceAssetReference {
 	imageStateMatches := ibImageStateRefRe.FindAllStringSubmatch(content, -1)
 	namedTagMatches := ibNamedAssetTagRefRe.FindAllStringSubmatch(content, -1)
 	if len(imageStateMatches) == 0 && len(namedTagMatches) == 0 {
 		return nil
 	}
 	seen := make(map[string]struct{})
-	out := make([]string, 0, len(imageStateMatches)+len(namedTagMatches))
-	appendMatches := func(matches [][]string) {
+	out := make([]sourceAssetReference, 0, len(imageStateMatches)+len(namedTagMatches))
+	appendMatches := func(matches [][]string, typeIndex int, defaultAssetType string) {
 		for _, m := range matches {
-			if len(m) < 2 {
+			if len(m) < 2 || len(m) <= typeIndex {
 				continue
 			}
-			name := strings.TrimSpace(m[1])
+			assetType := defaultAssetType
+			if typeIndex >= 0 {
+				assetType = ibTagToAssetType(strings.TrimSpace(m[typeIndex]))
+			}
+			name := strings.TrimSpace(m[len(m)-1])
 			if name == "" {
 				continue
 			}
-			if _, exists := seen[name]; exists {
+			key := sourceAssetTypeKey(name, assetType)
+			if _, exists := seen[key]; exists {
 				continue
 			}
-			seen[name] = struct{}{}
-			out = append(out, name)
+			seen[key] = struct{}{}
+			out = append(out, sourceAssetReference{Name: name, AssetType: assetType})
 		}
 	}
-	appendMatches(imageStateMatches)
-	appendMatches(namedTagMatches)
+	appendMatches(imageStateMatches, -1, "imageset")
+	appendMatches(namedTagMatches, 1, "")
 	return out
+}
+
+func ibTagToAssetType(tag string) string {
+	switch strings.ToLower(strings.TrimSpace(tag)) {
+	case "image":
+		return "imageset"
+	case "color":
+		return "colorset"
+	default:
+		return ""
+	}
 }
 
 func extractSwiftResourceIdentifiers(content string) []string {

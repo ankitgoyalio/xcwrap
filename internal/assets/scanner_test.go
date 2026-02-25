@@ -335,6 +335,58 @@ func TestScan_FindsIBColorTagNameReferences(t *testing.T) {
 	}
 }
 
+func TestScan_IBColorReference_DoesNotMarkSameNameImageAssetUsed(t *testing.T) {
+	root := t.TempDir()
+	catalog := filepath.Join(root, "App", "Assets.xcassets")
+	imageAssetPath := filepath.Join(catalog, "logo.imageset")
+	colorAssetPath := filepath.Join(catalog, "logo.colorset")
+	if err := os.MkdirAll(imageAssetPath, 0o755); err != nil {
+		t.Fatalf("mkdir image asset set: %v", err)
+	}
+	if err := os.MkdirAll(colorAssetPath, 0o755); err != nil {
+		t.Fatalf("mkdir color asset set: %v", err)
+	}
+
+	storyboard := `<?xml version="1.0" encoding="UTF-8"?>
+<document type="com.apple.InterfaceBuilder3.CocoaTouch.Storyboard.XIB">
+    <scenes>
+        <scene>
+            <objects>
+                <viewController>
+                    <view key="view">
+                        <color key="backgroundColor" name="logo"/>
+                    </view>
+                </viewController>
+            </objects>
+        </scene>
+    </scenes>
+</document>`
+	if err := os.WriteFile(filepath.Join(root, "Main.storyboard"), []byte(storyboard), 0o644); err != nil {
+		t.Fatalf("write storyboard: %v", err)
+	}
+
+	res, err := Scan(Options{Root: root, Workers: 2})
+	if err != nil {
+		t.Fatalf("scan error: %v", err)
+	}
+	if len(res.AssetNames) != 2 || res.AssetNames[0] != "logo.colorset" || res.AssetNames[1] != "logo.imageset" {
+		t.Fatalf("unexpected asset names: %#v", res.AssetNames)
+	}
+	if len(res.UsedAssets) != 1 || res.UsedAssets[0] != "logo.colorset" {
+		t.Fatalf("unexpected used assets: %#v", res.UsedAssets)
+	}
+	if len(res.UnusedAssets) != 1 || res.UnusedAssets[0] != "logo.imageset" {
+		t.Fatalf("unexpected unused assets: %#v", res.UnusedAssets)
+	}
+	unusedInCatalog, ok := res.UnusedByFile[catalog]
+	if !ok {
+		t.Fatalf("expected catalog %q in unusedByFile, got %#v", catalog, res.UnusedByFile)
+	}
+	if len(unusedInCatalog) != 1 || unusedInCatalog[0] != imageAssetPath {
+		t.Fatalf("expected only imageset unused path %q, got %#v", imageAssetPath, unusedInCatalog)
+	}
+}
+
 func TestScan_FindsSwiftUIImageResourceReference_WithIdentifier(t *testing.T) {
 	root := t.TempDir()
 	catalog := filepath.Join(root, "App", "Assets.xcassets")
