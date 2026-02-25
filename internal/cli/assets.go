@@ -207,6 +207,8 @@ type pruneResult struct {
 	Force               bool     `json:"force"`
 	UnusedCount         int      `json:"unusedCount"`
 	PruneCandidateCount int      `json:"pruneCandidateCount"`
+	// Deleted is backward-compatible JSON output; in dry-run mode it contains
+	// prune candidates that would be deleted with --apply.
 	Deleted             []string `json:"deleted"`
 	DryRun              bool     `json:"dryRun"`
 }
