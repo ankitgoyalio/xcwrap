@@ -808,12 +808,17 @@ func extractObjCImageNamedVariableReferences(content string) []string {
 
 	seenNames := make(map[string]struct{})
 	names := make([]string, 0, len(varMatches))
+	assignPatterns := make(map[string]*regexp.Regexp, len(varMatches))
 	for _, m := range varMatches {
 		if len(m) < 2 || strings.TrimSpace(m[1]) == "" {
 			continue
 		}
 		varName := m[1]
-		assignRe := regexp.MustCompile(`\b` + regexp.QuoteMeta(varName) + `\s*=\s*([^;]+);`)
+		assignRe, ok := assignPatterns[varName]
+		if !ok {
+			assignRe = regexp.MustCompile(`\b` + regexp.QuoteMeta(varName) + `\s*=\s*([^;]+);`)
+			assignPatterns[varName] = assignRe
+		}
 		assignMatches := assignRe.FindAllStringSubmatch(content, -1)
 		for _, assignMatch := range assignMatches {
 			if len(assignMatch) < 2 {
