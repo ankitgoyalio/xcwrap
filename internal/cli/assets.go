@@ -254,7 +254,7 @@ func newAssetsPruneCommand(ctx *runContext) *cobra.Command {
 						return err
 					}
 				}
-				if err := deletePruneTargets(pruneTargets); err != nil {
+				if err := deletePruneTargets(resolvedPath, pruneTargets); err != nil {
 					return err
 				}
 			}
@@ -574,8 +574,24 @@ func isPrunableAssetSetPath(path string) bool {
 	}
 }
 
-func deletePruneTargets(paths []string) error {
+func deletePruneTargets(root string, paths []string) error {
+	rootAbs, err := filepath.Abs(root)
+	if err != nil {
+		return fmt.Errorf("failed to resolve prune root %q: %w", root, err)
+	}
+
 	for _, path := range paths {
+		absPath, err := filepath.Abs(path)
+		if err != nil {
+			return fmt.Errorf("failed to resolve prune target %q: %w", path, err)
+		}
+		rel, err := filepath.Rel(rootAbs, absPath)
+		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+			return fmt.Errorf("refusing to delete path outside root: %s", path)
+		}
+		if !strings.Contains(filepath.ToSlash(rel), ".xcassets/") {
+			return fmt.Errorf("refusing to delete non-catalog path: %s", path)
+		}
 		if !isPrunableAssetSetPath(path) {
 			return fmt.Errorf("refusing to delete non-asset-set path: %s", path)
 		}
