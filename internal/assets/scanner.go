@@ -465,12 +465,18 @@ func extractSwiftTypedResourceIdentifiers(content string) []string {
 
 	seenIdentifiers := make(map[string]struct{})
 	identifiers := make([]string, 0, len(mergedMatches))
+	patternsByVar := make(map[string]swiftEnumIdentifierPatterns)
 	for _, m := range mergedMatches {
 		if len(m) < 2 || strings.TrimSpace(m[1]) == "" {
 			continue
 		}
 		varName := m[1]
-		for _, identifier := range extractEnumIdentifiersForSwiftVar(content, varName) {
+		patterns, ok := patternsByVar[varName]
+		if !ok {
+			patterns = buildSwiftEnumIdentifierPatterns(varName)
+			patternsByVar[varName] = patterns
+		}
+		for _, identifier := range extractEnumIdentifiersForSwiftVar(content, patterns) {
 			if _, exists := seenIdentifiers[identifier]; exists {
 				continue
 			}
@@ -496,6 +502,23 @@ func extractSwiftTypedResourceIdentifiers(content string) []string {
 		}
 	}
 	return identifiers
+}
+
+type swiftEnumIdentifierPatterns struct {
+	assign       *regexp.Regexp
+	append       *regexp.Regexp
+	insert       *regexp.Regexp
+	scalarAssign *regexp.Regexp
+}
+
+func buildSwiftEnumIdentifierPatterns(varName string) swiftEnumIdentifierPatterns {
+	quotedVarName := regexp.QuoteMeta(varName)
+	return swiftEnumIdentifierPatterns{
+		assign:       regexp.MustCompile(`\b` + quotedVarName + `(?:\s*:\s*[^=\n\r]+)?\s*=\s*\[([^\]]*)\]`),
+		append:       regexp.MustCompile(`\b` + quotedVarName + `\s*\.append\s*\(\s*\.([A-Za-z_][A-Za-z0-9_]*)`),
+		insert:       regexp.MustCompile(`\b` + quotedVarName + `\s*\.insert\s*\(\s*\.([A-Za-z_][A-Za-z0-9_]*)`),
+		scalarAssign: regexp.MustCompile(`\b` + quotedVarName + `(?:\s*:\s*[^=\n\r]+)?\s*=\s*\.([A-Za-z_][A-Za-z0-9_]*)`),
+	}
 }
 
 func extractSwiftResourceReturnBodies(content string) []string {
@@ -545,7 +568,7 @@ func findMatchingBrace(content string, openIdx int) int {
 	return -1
 }
 
-func extractEnumIdentifiersForSwiftVar(content string, varName string) []string {
+func extractEnumIdentifiersForSwiftVar(content string, patterns swiftEnumIdentifierPatterns) []string {
 	seen := make(map[string]struct{})
 	out := make([]string, 0, 8)
 
@@ -560,8 +583,7 @@ func extractEnumIdentifiersForSwiftVar(content string, varName string) []string 
 		out = append(out, identifier)
 	}
 
-	assignRe := regexp.MustCompile(`\b` + regexp.QuoteMeta(varName) + `(?:\s*:\s*[^=\n\r]+)?\s*=\s*\[([^\]]*)\]`)
-	for _, m := range assignRe.FindAllStringSubmatch(content, -1) {
+	for _, m := range patterns.assign.FindAllStringSubmatch(content, -1) {
 		if len(m) < 2 {
 			continue
 		}
@@ -573,24 +595,21 @@ func extractEnumIdentifiersForSwiftVar(content string, varName string) []string 
 		}
 	}
 
-	appendRe := regexp.MustCompile(`\b` + regexp.QuoteMeta(varName) + `\s*\.append\s*\(\s*\.([A-Za-z_][A-Za-z0-9_]*)`)
-	for _, m := range appendRe.FindAllStringSubmatch(content, -1) {
+	for _, m := range patterns.append.FindAllStringSubmatch(content, -1) {
 		if len(m) < 2 {
 			continue
 		}
 		appendIdentifier(strings.TrimSpace(m[1]))
 	}
 
-	insertRe := regexp.MustCompile(`\b` + regexp.QuoteMeta(varName) + `\s*\.insert\s*\(\s*\.([A-Za-z_][A-Za-z0-9_]*)`)
-	for _, m := range insertRe.FindAllStringSubmatch(content, -1) {
+	for _, m := range patterns.insert.FindAllStringSubmatch(content, -1) {
 		if len(m) < 2 {
 			continue
 		}
 		appendIdentifier(strings.TrimSpace(m[1]))
 	}
 
-	scalarAssignRe := regexp.MustCompile(`\b` + regexp.QuoteMeta(varName) + `(?:\s*:\s*[^=\n\r]+)?\s*=\s*\.([A-Za-z_][A-Za-z0-9_]*)`)
-	for _, m := range scalarAssignRe.FindAllStringSubmatch(content, -1) {
+	for _, m := range patterns.scalarAssign.FindAllStringSubmatch(content, -1) {
 		if len(m) < 2 {
 			continue
 		}
