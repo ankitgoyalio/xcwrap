@@ -148,19 +148,19 @@ func newAssetsUnusedCommand(ctx *runContext) *cobra.Command {
 				return usageError{Message: "invalid value for --workers: must be >= 1"}
 			}
 
-				sortedInclude := append([]string{}, include...)
-				sortedExclude := append([]string{}, exclude...)
-				slices.Sort(sortedInclude)
-				slices.Sort(sortedExclude)
-				if err := validateGlobPatterns(sortedInclude, "include"); err != nil {
-					return err
-				}
-				if err := validateGlobPatterns(sortedExclude, "exclude"); err != nil {
-					return err
-				}
+			sortedInclude := append([]string{}, include...)
+			sortedExclude := append([]string{}, exclude...)
+			slices.Sort(sortedInclude)
+			slices.Sort(sortedExclude)
+			if err := validateGlobPatterns(sortedInclude, "include"); err != nil {
+				return err
+			}
+			if err := validateGlobPatterns(sortedExclude, "exclude"); err != nil {
+				return err
+			}
 
-				scan, err := assets.Scan(assets.Options{
-					Root:    resolvedPath,
+			scan, err := assets.Scan(assets.Options{
+				Root:    resolvedPath,
 				Include: sortedInclude,
 				Exclude: sortedExclude,
 				Workers: workers,
