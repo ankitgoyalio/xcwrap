@@ -316,6 +316,37 @@ func TestAssetsScan_ExcludeFlag_AllowsAdditionalExcludes(t *testing.T) {
 	}
 }
 
+func TestAssetsScan_ExcludeFlag_CommaSeparatedValuesExcludeMultiplePaths(t *testing.T) {
+	root := t.TempDir()
+	externalAssetDir := filepath.Join(root, "ExternalLib", "Assets.xcassets", "externalIcon.imageset")
+	vendorAssetDir := filepath.Join(root, "vendor", "SomeLib", "Assets.xcassets", "vendorIcon.imageset")
+	if err := os.MkdirAll(externalAssetDir, 0o755); err != nil {
+		t.Fatalf("mkdir external asset set: %v", err)
+	}
+	if err := os.MkdirAll(vendorAssetDir, 0o755); err != nil {
+		t.Fatalf("mkdir vendor asset set: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := Execute([]string{"assets", "scan", "--path", root, "--exclude", "ExternalLib/,vendor/"}, &stdout, &stderr)
+	if exitCode != 0 {
+		t.Fatalf("expected exit code 0, got %d, stderr=%s", exitCode, stderr.String())
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &payload); err != nil {
+		t.Fatalf("expected JSON output, got err: %v", err)
+	}
+	summary, ok := payload["summary"].(map[string]any)
+	if !ok {
+		t.Fatalf("missing summary payload: %#v", payload)
+	}
+	if summary["assetSets"] != float64(0) {
+		t.Fatalf("expected assetSets=0 with comma-separated --exclude, got %v", summary["assetSets"])
+	}
+}
+
 func TestAssetsScan_InvalidIncludeGlobReturnsUsageError(t *testing.T) {
 	root := t.TempDir()
 	catalog := filepath.Join(root, "Assets.xcassets")
@@ -347,6 +378,40 @@ func TestAssetsScan_InvalidIncludeGlobReturnsUsageError(t *testing.T) {
 	message, _ := errVal["message"].(string)
 	if !strings.Contains(message, "invalid value for --include") {
 		t.Fatalf("expected include validation message, got: %q", message)
+	}
+}
+
+func TestAssetsScan_InvalidExcludeGlobReturnsUsageError(t *testing.T) {
+	root := t.TempDir()
+	catalog := filepath.Join(root, "Assets.xcassets")
+	if err := os.MkdirAll(filepath.Join(catalog, "used.imageset"), 0o755); err != nil {
+		t.Fatalf("mkdir asset set: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := Execute([]string{"assets", "scan", "--path", root, "--exclude", "["}, &stdout, &stderr)
+	if exitCode != 2 {
+		t.Fatalf("expected exit code 2, got %d", exitCode)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("expected empty stdout, got %s", stdout.String())
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(stderr.Bytes(), &payload); err != nil {
+		t.Fatalf("expected JSON error output, got err: %v, stderr=%s", err, stderr.String())
+	}
+	errVal, ok := payload["error"].(map[string]any)
+	if !ok {
+		t.Fatalf("missing error object: %v", payload)
+	}
+	if errVal["code"] != "usage_error" {
+		t.Fatalf("unexpected error code: %v", errVal["code"])
+	}
+	message, _ := errVal["message"].(string)
+	if !strings.Contains(message, "invalid value for --exclude") {
+		t.Fatalf("expected exclude validation message, got: %q", message)
 	}
 }
 
@@ -554,6 +619,39 @@ func TestAssetsUnused_InvalidExcludeGlobReturnsUsageError(t *testing.T) {
 	message, _ := errVal["message"].(string)
 	if !strings.Contains(message, "invalid value for --exclude") {
 		t.Fatalf("expected exclude validation message, got: %q", message)
+	}
+}
+
+func TestAssetsUnused_ExcludeFlag_CommaSeparatedValuesExcludeMultiplePaths(t *testing.T) {
+	root := t.TempDir()
+	externalAssetDir := filepath.Join(root, "ExternalLib", "Assets.xcassets", "externalIcon.imageset")
+	vendorAssetDir := filepath.Join(root, "vendor", "SomeLib", "Assets.xcassets", "vendorIcon.imageset")
+	if err := os.MkdirAll(externalAssetDir, 0o755); err != nil {
+		t.Fatalf("mkdir external asset set: %v", err)
+	}
+	if err := os.MkdirAll(vendorAssetDir, 0o755); err != nil {
+		t.Fatalf("mkdir vendor asset set: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := Execute([]string{"assets", "unused", "--path", root, "--exclude", "ExternalLib/,vendor/"}, &stdout, &stderr)
+	if exitCode != 0 {
+		t.Fatalf("expected exit code 0, got %d, stderr=%s", exitCode, stderr.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got %s", stderr.String())
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &payload); err != nil {
+		t.Fatalf("expected JSON output, got err: %v, stdout=%s", err, stdout.String())
+	}
+	if payload["unusedCount"] != float64(0) {
+		t.Fatalf("expected unusedCount=0 with comma-separated --exclude, got %v", payload["unusedCount"])
+	}
+	if payload["pruneCandidateCount"] != float64(0) {
+		t.Fatalf("expected pruneCandidateCount=0 with comma-separated --exclude, got %v", payload["pruneCandidateCount"])
 	}
 }
 
