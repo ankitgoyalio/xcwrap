@@ -2,6 +2,14 @@
 
 Fast, lightweight, AI-agent-friendly CLI for Xcode `.xc*` workflows. Built in Go.
 
+## Best Practice References
+
+Always refer to these repositories for implementation and CLI best practices:
+
+- <https://github.com/jesseduffield/lazygit.git>
+- <https://github.com/rudrankriyam/App-Store-Connect-CLI>
+- <https://github.com/cli/cli>
+
 ## Core Principles
 
 - Explicit flags: always prefer long-form flags (`--project`, `--output`, `--apply`) over short aliases.
@@ -9,6 +17,7 @@ Fast, lightweight, AI-agent-friendly CLI for Xcode `.xc*` workflows. Built in Go
 - No interactive prompts: commands must remain automation-safe and CI-safe by default.
 - Deterministic output: stable ordering for machine parsing and reproducible diffs.
 - Safety-first writes: destructive operations require explicit opt-in and git state checks.
+- Shell preference: whenever sharing terminal commands, default to fish-compatible syntax unless another shell is explicitly requested.
 
 ## xcwrap Scope (V1)
 
@@ -65,6 +74,7 @@ Do not ship speculative or low-confidence heuristics in V1.
 ## Output Contract
 
 - Default stdout: minified JSON.
+- JSON field names must use camelCase.
 - Human output: `--output table` or `--output markdown`.
 - Errors must use a structured JSON envelope.
 - Flag validation and usage errors must return exit code `2`.
@@ -151,6 +161,19 @@ Do not mark work complete until all are true:
 - Keep README examples machine-safe and copy-pasteable.
 - Document CI-friendly behavior and non-interactive guarantees.
 - Document destructive command safeguards clearly.
+
+## Issue Raising
+
+- When asked to raise a GitHub issue, always draft from `.github/ISSUE_TEMPLATE/engineering_issue.md`.
+- Every issue body must include these sections in order:
+  - `Summary`
+  - `Why`
+  - `Current gap in the code`
+  - `Proposed change`
+  - `Testing`
+  - `Validation command`
+  - `Acceptance Criteria`
+- Keep issue descriptions actionable and tied to specific files/lines when known.
 
 ## Environment Variables
 

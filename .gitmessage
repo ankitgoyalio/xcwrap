@@ -1,0 +1,29 @@
+# <type>(<scope>): <description>
+#
+# <optional body>
+#
+# <optional footer>
+#
+# Conventional Commit types:
+#   feat      New feature
+#   fix       Bug fix
+#   docs      Docs only
+#   style     Formatting/non-functional
+#   refactor  Code change, not feature/fix
+#   perf      Performance
+#   test      Test change/addition
+#   build     Build/dependency
+#   ci        CI config
+#   chore     Maintenance
+#   revert    Revert prior commit
+#
+# Header rules:
+# - format: <type>(<scope>): <description>
+# - imperative, lowercase description, no trailing period
+# - <= 72 characters
+#
+# Body/footer rules:
+# - body is optional; explain what/why for non-trivial diffs
+# - wrap lines at <= 72 characters
+# - footer is optional; use "Closes #<id>" only when high confidence
+# - add "BREAKING CHANGE:" only for explicit breaking changes
