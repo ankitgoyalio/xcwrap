@@ -1,6 +1,7 @@
 package assets
 
 import (
+	"fmt"
 	"os"
 	"unicode/utf8"
 )
@@ -11,7 +12,7 @@ func osReadFile(path string) (string, error) {
 		return "", err
 	}
 	if !utf8.Valid(b) {
-		return "", nil
+		return "", fmt.Errorf("invalid UTF-8 encoding in %s", path)
 	}
 	return string(b), nil
 }

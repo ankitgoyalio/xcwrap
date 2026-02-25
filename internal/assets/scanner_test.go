@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 )
@@ -45,6 +46,30 @@ func TestScan_FindsUsedAndUnusedAssets(t *testing.T) {
 	}
 	if len(res.UnusedByFile) != 1 {
 		t.Fatalf("expected one grouped file entry, got %#v", res.UnusedByFile)
+	}
+}
+
+func TestScan_ReturnsErrorForInvalidUTF8SourceFile(t *testing.T) {
+	root := t.TempDir()
+	catalog := filepath.Join(root, "App", "Assets.xcassets")
+	if err := os.MkdirAll(filepath.Join(catalog, "icon.imageset"), 0o755); err != nil {
+		t.Fatalf("mkdir asset set: %v", err)
+	}
+
+	badSwiftPath := filepath.Join(root, "App", "Bad.swift")
+	if err := os.WriteFile(badSwiftPath, []byte{0xff, 0xfe, 0xfd}, 0o644); err != nil {
+		t.Fatalf("write invalid swift source: %v", err)
+	}
+
+	_, err := Scan(Options{Root: root, Workers: 2})
+	if err == nil {
+		t.Fatalf("expected scan to fail for invalid UTF-8 source")
+	}
+	if !strings.Contains(err.Error(), "invalid UTF-8 encoding") {
+		t.Fatalf("expected UTF-8 error, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "Bad.swift") {
+		t.Fatalf("expected error to mention source file, got %v", err)
 	}
 }
 
