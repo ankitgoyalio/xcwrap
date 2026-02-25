@@ -120,7 +120,7 @@ func newAssetsScanCommand(ctx *runContext) *cobra.Command {
 
 	cmd.Flags().StringVar(&path, "path", ".", "Path to scan")
 	cmd.Flags().StringSliceVar(&include, "include", nil, "Include path globs")
-	cmd.Flags().StringSliceVar(&exclude, "exclude", append([]string{}, defaultExcludedPaths...), "Exclude path globs (repeatable)")
+	cmd.Flags().StringSliceVar(&exclude, "exclude", append([]string{}, defaultExcludedPaths...), "Exclude path globs (replaces defaults; repeatable, comma-separated)")
 	cmd.Flags().IntVar(&workers, "workers", defaultWorkers(), "Worker count")
 
 	return cmd
@@ -180,7 +180,7 @@ func newAssetsUnusedCommand(ctx *runContext) *cobra.Command {
 
 	cmd.Flags().StringVar(&path, "path", ".", "Path to scan")
 	cmd.Flags().StringSliceVar(&include, "include", nil, "Include path globs")
-	cmd.Flags().StringSliceVar(&exclude, "exclude", append([]string{}, defaultExcludedPaths...), "Exclude path globs (repeatable)")
+	cmd.Flags().StringSliceVar(&exclude, "exclude", append([]string{}, defaultExcludedPaths...), "Exclude path globs (replaces defaults; repeatable, comma-separated)")
 	cmd.Flags().IntVar(&workers, "workers", defaultWorkers(), "Worker count")
 	return cmd
 }
