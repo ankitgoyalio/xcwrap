@@ -742,6 +742,40 @@ func TestAssetsPrune_DryRunReportsCandidatesWithoutDeleting(t *testing.T) {
 	}
 }
 
+func TestAssetsPrune_ExplicitCountsWhenPruneCandidatesExceedUnusedNames(t *testing.T) {
+	root := t.TempDir()
+
+	moduleACatalog := filepath.Join(root, "Modules", "ModuleA", "Assets.xcassets")
+	moduleBCatalog := filepath.Join(root, "Modules", "ModuleB", "Assets.xcassets")
+	if err := os.MkdirAll(filepath.Join(moduleACatalog, "icon.imageset"), 0o755); err != nil {
+		t.Fatalf("mkdir module a asset: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(moduleBCatalog, "icon.imageset"), 0o755); err != nil {
+		t.Fatalf("mkdir module b asset: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := Execute([]string{"assets", "prune", "--path", root}, &stdout, &stderr)
+	if exitCode != 0 {
+		t.Fatalf("expected exit code 0, got %d, stderr=%s", exitCode, stderr.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got %s", stderr.String())
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &payload); err != nil {
+		t.Fatalf("expected JSON output, got err: %v, stdout=%s", err, stdout.String())
+	}
+	if payload["unusedCount"] != float64(1) {
+		t.Fatalf("expected unusedCount=1, got %v", payload["unusedCount"])
+	}
+	if payload["pruneCandidateCount"] != float64(2) {
+		t.Fatalf("expected pruneCandidateCount=2, got %v", payload["pruneCandidateCount"])
+	}
+}
+
 func TestAssetsPrune_ApplyDeletesUnusedAssetsWhenGitTreeClean(t *testing.T) {
 	root := t.TempDir()
 	catalog := filepath.Join(root, "Assets.xcassets")

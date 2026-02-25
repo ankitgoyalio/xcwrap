@@ -243,6 +243,11 @@ func newAssetsPruneCommand(ctx *runContext) *cobra.Command {
 			}
 
 			pruneTargets := collectPruneTargets(scan.UnusedByFile)
+			unusedByFile := buildUnusedByFilePayload(scan.UnusedByFile)
+			unusedSummary := scan.UnusedAssets
+			if len(unusedSummary) == 0 && len(unusedByFile) > 0 {
+				unusedSummary = flattenUnusedByFileNames(unusedByFile)
+			}
 			if apply {
 				if !force {
 					if err := requireCleanGitWorkingTree(resolvedPath); err != nil {
@@ -259,7 +264,7 @@ func newAssetsPruneCommand(ctx *runContext) *cobra.Command {
 				Path:                resolvedPath,
 				Apply:               apply,
 				Force:               force,
-				UnusedCount:         len(scan.UnusedAssets),
+				UnusedCount:         len(unusedSummary),
 				PruneCandidateCount: len(pruneTargets),
 				Deleted:             pruneTargets,
 				DryRun:              !apply,
