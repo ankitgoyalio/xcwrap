@@ -428,8 +428,11 @@ func renderPruneResult(w io.Writer, output string, result pruneResult) error {
 	case outputJSON:
 		return writeJSON(w, result)
 	case outputTable:
-		_, err := fmt.Fprintf(w, "command\tpath\tapply\tforce\tdry_run\tunused_count\tprune_candidate_count\tdeleted_count\n%s\t%s\t%t\t%t\t%t\t%d\t%d\t%d\n", result.Command, result.Path, result.Apply, result.Force, result.DryRun, result.UnusedCount, result.PruneCandidateCount, len(result.Deleted))
-		return err
+		tw := tabwriter.NewWriter(w, 0, 8, 2, ' ', 0)
+		if _, err := fmt.Fprintf(tw, "command\tpath\tapply\tforce\tdry_run\tunused_count\tprune_candidate_count\tdeleted_count\n%s\t%s\t%t\t%t\t%t\t%d\t%d\t%d\n", result.Command, result.Path, result.Apply, result.Force, result.DryRun, result.UnusedCount, result.PruneCandidateCount, len(result.Deleted)); err != nil {
+			return err
+		}
+		return tw.Flush()
 	case outputMarkdown:
 		_, err := fmt.Fprintf(w, "| command | path | apply | force | dry_run | unused_count | prune_candidate_count | deleted_count |\n|---|---|---|---|---|---:|---:|---:|\n| %s | %s | %t | %t | %t | %d | %d | %d |\n", result.Command, result.Path, result.Apply, result.Force, result.DryRun, result.UnusedCount, result.PruneCandidateCount, len(result.Deleted))
 		return err
