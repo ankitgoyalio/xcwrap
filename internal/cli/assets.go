@@ -53,6 +53,40 @@ type scanResult struct {
 	} `json:"summary"`
 }
 
+func runAssetScan(path string, include []string, exclude []string, workers int) (string, []string, []string, assets.Result, error) {
+	resolvedPath, err := resolveScanPath(path)
+	if err != nil {
+		return "", nil, nil, assets.Result{}, err
+	}
+
+	if workers < 1 {
+		return "", nil, nil, assets.Result{}, usageError{Message: "invalid value for --workers: must be >= 1"}
+	}
+
+	sortedInclude := append([]string{}, include...)
+	sortedExclude := append([]string{}, exclude...)
+	slices.Sort(sortedInclude)
+	slices.Sort(sortedExclude)
+	if err := validateGlobPatterns(sortedInclude, "include"); err != nil {
+		return "", nil, nil, assets.Result{}, err
+	}
+	if err := validateGlobPatterns(sortedExclude, "exclude"); err != nil {
+		return "", nil, nil, assets.Result{}, err
+	}
+
+	scan, err := assets.Scan(assets.Options{
+		Root:    resolvedPath,
+		Include: sortedInclude,
+		Exclude: sortedExclude,
+		Workers: workers,
+	})
+	if err != nil {
+		return "", nil, nil, assets.Result{}, err
+	}
+
+	return resolvedPath, sortedInclude, sortedExclude, scan, nil
+}
+
 func newAssetsScanCommand(ctx *runContext) *cobra.Command {
 	var path string
 	var include []string
@@ -63,23 +97,8 @@ func newAssetsScanCommand(ctx *runContext) *cobra.Command {
 		Use:   "scan",
 		Short: "Scan project assets and references",
 		RunE: func(_ *cobra.Command, _ []string) error {
-			resolvedPath, err := resolveScanPath(path)
+			resolvedPath, sortedInclude, sortedExclude, scan, err := runAssetScan(path, include, exclude, workers)
 			if err != nil {
-				return err
-			}
-
-			if workers < 1 {
-				return usageError{Message: "invalid value for --workers: must be >= 1"}
-			}
-
-			sortedInclude := append([]string{}, include...)
-			sortedExclude := append([]string{}, exclude...)
-			slices.Sort(sortedInclude)
-			slices.Sort(sortedExclude)
-			if err := validateGlobPatterns(sortedInclude, "include"); err != nil {
-				return err
-			}
-			if err := validateGlobPatterns(sortedExclude, "exclude"); err != nil {
 				return err
 			}
 
@@ -89,15 +108,6 @@ func newAssetsScanCommand(ctx *runContext) *cobra.Command {
 				Include: sortedInclude,
 				Exclude: sortedExclude,
 				Workers: workers,
-			}
-			scan, err := assets.Scan(assets.Options{
-				Root:    resolvedPath,
-				Include: sortedInclude,
-				Exclude: sortedExclude,
-				Workers: workers,
-			})
-			if err != nil {
-				return err
 			}
 			result.Summary.AssetCatalogs = scan.AssetCatalogs
 			result.Summary.AssetSets = len(scan.AssetNames)
@@ -139,32 +149,7 @@ func newAssetsUnusedCommand(ctx *runContext) *cobra.Command {
 		Use:   "unused",
 		Short: "Detect unused assets",
 		RunE: func(_ *cobra.Command, _ []string) error {
-			resolvedPath, err := resolveScanPath(path)
-			if err != nil {
-				return err
-			}
-
-			if workers < 1 {
-				return usageError{Message: "invalid value for --workers: must be >= 1"}
-			}
-
-			sortedInclude := append([]string{}, include...)
-			sortedExclude := append([]string{}, exclude...)
-			slices.Sort(sortedInclude)
-			slices.Sort(sortedExclude)
-			if err := validateGlobPatterns(sortedInclude, "include"); err != nil {
-				return err
-			}
-			if err := validateGlobPatterns(sortedExclude, "exclude"); err != nil {
-				return err
-			}
-
-			scan, err := assets.Scan(assets.Options{
-				Root:    resolvedPath,
-				Include: sortedInclude,
-				Exclude: sortedExclude,
-				Workers: workers,
-			})
+			resolvedPath, _, _, scan, err := runAssetScan(path, include, exclude, workers)
 			if err != nil {
 				return err
 			}
