@@ -49,6 +49,13 @@ func TestScan_FindsUsedAndUnusedAssets(t *testing.T) {
 	if len(res.UnusedByFile) != 1 {
 		t.Fatalf("expected one grouped file entry, got %#v", res.UnusedByFile)
 	}
+	unusedInCatalog, ok := res.UnusedByFile[catalog]
+	if !ok {
+		t.Fatalf("expected catalog %q in unusedByFile, got %#v", catalog, res.UnusedByFile)
+	}
+	if len(unusedInCatalog) != 1 || unusedInCatalog[0] != unusedSet {
+		t.Fatalf("expected unused path %q, got %#v", unusedSet, unusedInCatalog)
+	}
 }
 
 func TestScan_ReturnsErrorForInvalidUTF8SourceFile(t *testing.T) {
