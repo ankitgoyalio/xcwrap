@@ -183,6 +183,12 @@ func TestAssetsUnused_ReturnsExitCode3WhenUnusedFound(t *testing.T) {
 	if !ok || len(unused) != 1 || unused[0] != "unused" {
 		t.Fatalf("unexpected unused payload: %#v", payload["unused"])
 	}
+	if payload["unusedCount"] != float64(1) {
+		t.Fatalf("expected unusedCount=1, got %v", payload["unusedCount"])
+	}
+	if payload["pruneCandidateCount"] != float64(1) {
+		t.Fatalf("expected pruneCandidateCount=1, got %v", payload["pruneCandidateCount"])
+	}
 	grouped, ok := payload["unusedByFile"].(map[string]any)
 	if !ok || len(grouped) != 1 {
 		t.Fatalf("unexpected unusedByFile payload: %#v", payload["unusedByFile"])
@@ -449,6 +455,40 @@ func TestAssetsUnused_JSONGroupingDistinctCatalogsWithSameBasename(t *testing.T)
 	}
 }
 
+func TestAssetsUnused_ExplicitCountsWhenPruneCandidatesExceedUnusedNames(t *testing.T) {
+	root := t.TempDir()
+
+	moduleACatalog := filepath.Join(root, "Modules", "ModuleA", "Assets.xcassets")
+	moduleBCatalog := filepath.Join(root, "Modules", "ModuleB", "Assets.xcassets")
+	if err := os.MkdirAll(filepath.Join(moduleACatalog, "icon.imageset"), 0o755); err != nil {
+		t.Fatalf("mkdir module a asset: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(moduleBCatalog, "icon.imageset"), 0o755); err != nil {
+		t.Fatalf("mkdir module b asset: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := Execute([]string{"assets", "unused", "--path", root}, &stdout, &stderr)
+	if exitCode != 3 {
+		t.Fatalf("expected exit code 3, got %d, stderr=%s", exitCode, stderr.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got %s", stderr.String())
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &payload); err != nil {
+		t.Fatalf("expected JSON output, got err: %v, stdout=%s", err, stdout.String())
+	}
+	if payload["unusedCount"] != float64(1) {
+		t.Fatalf("expected unusedCount=1, got %v", payload["unusedCount"])
+	}
+	if payload["pruneCandidateCount"] != float64(2) {
+		t.Fatalf("expected pruneCandidateCount=2, got %v", payload["pruneCandidateCount"])
+	}
+}
+
 func TestAssetsPrune_DryRunReportsCandidatesWithoutDeleting(t *testing.T) {
 	root := t.TempDir()
 	catalog := filepath.Join(root, "Assets.xcassets")
@@ -480,6 +520,12 @@ func TestAssetsPrune_DryRunReportsCandidatesWithoutDeleting(t *testing.T) {
 	}
 	if payload["dryRun"] != true {
 		t.Fatalf("expected dryRun=true, got %v", payload["dryRun"])
+	}
+	if payload["unusedCount"] != float64(1) {
+		t.Fatalf("expected unusedCount=1, got %v", payload["unusedCount"])
+	}
+	if payload["pruneCandidateCount"] != float64(1) {
+		t.Fatalf("expected pruneCandidateCount=1, got %v", payload["pruneCandidateCount"])
 	}
 	deleted, ok := payload["deleted"].([]any)
 	if !ok || len(deleted) != 1 || deleted[0] != unusedPath {

@@ -110,10 +110,12 @@ func newAssetsScanCommand(ctx *runContext) *cobra.Command {
 }
 
 type unusedResult struct {
-	Command      string                      `json:"command"`
-	Path         string                      `json:"path"`
-	Unused       []string                    `json:"unused"`
-	UnusedByFile map[string]unusedFileResult `json:"unusedByFile"`
+	Command             string                      `json:"command"`
+	Path                string                      `json:"path"`
+	UnusedCount         int                         `json:"unusedCount"`
+	PruneCandidateCount int                         `json:"pruneCandidateCount"`
+	Unused              []string                    `json:"unused"`
+	UnusedByFile        map[string]unusedFileResult `json:"unusedByFile"`
 }
 
 type unusedFileResult struct {
@@ -154,16 +156,19 @@ func newAssetsUnusedCommand(ctx *runContext) *cobra.Command {
 				return err
 			}
 
+			pruneCandidates := collectPruneTargets(scan.UnusedByFile)
 			result := unusedResult{
-				Command:      "assets unused",
-				Path:         resolvedPath,
-				Unused:       scan.UnusedAssets,
-				UnusedByFile: buildUnusedByFilePayload(scan.UnusedByFile),
+				Command:             "assets unused",
+				Path:                resolvedPath,
+				UnusedCount:         len(scan.UnusedAssets),
+				PruneCandidateCount: len(pruneCandidates),
+				Unused:              scan.UnusedAssets,
+				UnusedByFile:        buildUnusedByFilePayload(scan.UnusedByFile),
 			}
 			if err := renderUnusedResult(ctx.stdout, ctx.output, result); err != nil {
 				return err
 			}
-			if len(result.Unused) > 0 {
+			if result.UnusedCount > 0 {
 				return unusedAssetsFoundError{}
 			}
 			return nil
@@ -178,12 +183,14 @@ func newAssetsUnusedCommand(ctx *runContext) *cobra.Command {
 }
 
 type pruneResult struct {
-	Command string   `json:"command"`
-	Path    string   `json:"path"`
-	Apply   bool     `json:"apply"`
-	Force   bool     `json:"force"`
-	Deleted []string `json:"deleted"`
-	DryRun  bool     `json:"dryRun"`
+	Command             string   `json:"command"`
+	Path                string   `json:"path"`
+	Apply               bool     `json:"apply"`
+	Force               bool     `json:"force"`
+	UnusedCount         int      `json:"unusedCount"`
+	PruneCandidateCount int      `json:"pruneCandidateCount"`
+	Deleted             []string `json:"deleted"`
+	DryRun              bool     `json:"dryRun"`
 }
 
 func newAssetsPruneCommand(ctx *runContext) *cobra.Command {
@@ -226,12 +233,14 @@ func newAssetsPruneCommand(ctx *runContext) *cobra.Command {
 			}
 
 			result := pruneResult{
-				Command: "assets prune",
-				Path:    resolvedPath,
-				Apply:   apply,
-				Force:   force,
-				Deleted: pruneTargets,
-				DryRun:  !apply,
+				Command:             "assets prune",
+				Path:                resolvedPath,
+				Apply:               apply,
+				Force:               force,
+				UnusedCount:         len(scan.UnusedAssets),
+				PruneCandidateCount: len(pruneTargets),
+				Deleted:             pruneTargets,
+				DryRun:              !apply,
 			}
 			return renderPruneResult(ctx.stdout, ctx.output, result)
 		},
@@ -356,7 +365,10 @@ func renderUnusedResult(w io.Writer, output string, result unusedResult) error {
 		if _, err := fmt.Fprintf(tw, "  Path:\t%s\n", result.Path); err != nil {
 			return err
 		}
-		if _, err := fmt.Fprintf(tw, "  Unused Count:\t%d\n", len(result.Unused)); err != nil {
+		if _, err := fmt.Fprintf(tw, "  Unused Count:\t%d\n", result.UnusedCount); err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintf(tw, "  Prune Candidate Count:\t%d\n", result.PruneCandidateCount); err != nil {
 			return err
 		}
 		if len(result.Unused) > 0 {
@@ -376,7 +388,7 @@ func renderUnusedResult(w io.Writer, output string, result unusedResult) error {
 		}
 		return tw.Flush()
 	case outputMarkdown:
-		if _, err := fmt.Fprintf(w, "| command | path | unused_count |\n|---|---|---:|\n| %s | %s | %d |\n", result.Command, result.Path, len(result.Unused)); err != nil {
+		if _, err := fmt.Fprintf(w, "| command | path | unused_count | prune_candidate_count |\n|---|---|---:|---:|\n| %s | %s | %d | %d |\n", result.Command, result.Path, result.UnusedCount, result.PruneCandidateCount); err != nil {
 			return err
 		}
 		if len(result.Unused) == 0 {
@@ -403,10 +415,10 @@ func renderPruneResult(w io.Writer, output string, result pruneResult) error {
 	case outputJSON:
 		return writeJSON(w, result)
 	case outputTable:
-		_, err := fmt.Fprintf(w, "command\tpath\tapply\tforce\tdry_run\tdeleted_count\n%s\t%s\t%t\t%t\t%t\t%d\n", result.Command, result.Path, result.Apply, result.Force, result.DryRun, len(result.Deleted))
+		_, err := fmt.Fprintf(w, "command\tpath\tapply\tforce\tdry_run\tunused_count\tprune_candidate_count\tdeleted_count\n%s\t%s\t%t\t%t\t%t\t%d\t%d\t%d\n", result.Command, result.Path, result.Apply, result.Force, result.DryRun, result.UnusedCount, result.PruneCandidateCount, len(result.Deleted))
 		return err
 	case outputMarkdown:
-		_, err := fmt.Fprintf(w, "| command | path | apply | force | dry_run | deleted_count |\n|---|---|---|---|---|---:|\n| %s | %s | %t | %t | %t | %d |\n", result.Command, result.Path, result.Apply, result.Force, result.DryRun, len(result.Deleted))
+		_, err := fmt.Fprintf(w, "| command | path | apply | force | dry_run | unused_count | prune_candidate_count | deleted_count |\n|---|---|---|---|---|---:|---:|---:|\n| %s | %s | %t | %t | %t | %d | %d | %d |\n", result.Command, result.Path, result.Apply, result.Force, result.DryRun, result.UnusedCount, result.PruneCandidateCount, len(result.Deleted))
 		return err
 	default:
 		return usageError{Message: fmt.Sprintf("invalid value for --output: %q (allowed: json, table, markdown)", output)}
