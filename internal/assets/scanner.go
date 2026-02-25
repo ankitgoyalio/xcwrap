@@ -75,7 +75,7 @@ func Scan(opts Options) (Result, error) {
 		workers = 1
 	}
 
-	assetCatalogs, assetNames, discoveredAssets, err := collectAssets(opts.Root, opts.Include, opts.Exclude)
+	assetCatalogs, _, discoveredAssets, err := collectAssets(opts.Root, opts.Include, opts.Exclude)
 	if err != nil {
 		return Result{}, err
 	}
@@ -84,17 +84,26 @@ func Scan(opts Options) (Result, error) {
 		return Result{}, err
 	}
 
-	usedNames := make(map[string]struct{}, len(assetNames))
-	unusedNames := make(map[string]struct{}, len(assetNames))
+	summaryNameForAsset := buildAssetSummaryNamer(discoveredAssets)
+	assetNamesSet := make(map[string]struct{}, len(discoveredAssets))
+	usedNames := make(map[string]struct{}, len(discoveredAssets))
+	unusedNames := make(map[string]struct{}, len(discoveredAssets))
 	unusedByFile := make(map[string][]string)
 	for _, asset := range discoveredAssets {
+		summaryName := summaryNameForAsset(asset)
+		assetNamesSet[summaryName] = struct{}{}
 		if _, ok := usedAssetPaths[asset.AssetPath]; ok {
-			usedNames[asset.Name] = struct{}{}
+			usedNames[summaryName] = struct{}{}
 			continue
 		}
-		unusedNames[asset.Name] = struct{}{}
+		unusedNames[summaryName] = struct{}{}
 		unusedByFile[asset.CatalogPath] = append(unusedByFile[asset.CatalogPath], asset.AssetPath)
 	}
+	assetNames := make([]string, 0, len(assetNamesSet))
+	for name := range assetNamesSet {
+		assetNames = append(assetNames, name)
+	}
+	slices.Sort(assetNames)
 	used := make([]string, 0, len(usedNames))
 	for name := range usedNames {
 		used = append(used, name)
@@ -117,6 +126,28 @@ func Scan(opts Options) (Result, error) {
 		UnusedAssets:  unused,
 		UnusedByFile:  unusedByFile,
 	}, nil
+}
+
+func buildAssetSummaryNamer(discoveredAssets []discoveredAsset) func(discoveredAsset) string {
+	assetTypesByName := make(map[string]map[string]struct{}, len(discoveredAssets))
+	for _, asset := range discoveredAssets {
+		if _, ok := assetTypesByName[asset.Name]; !ok {
+			assetTypesByName[asset.Name] = make(map[string]struct{}, 1)
+		}
+		assetTypesByName[asset.Name][asset.AssetType] = struct{}{}
+	}
+
+	hasTypeCollision := make(map[string]bool, len(assetTypesByName))
+	for name, types := range assetTypesByName {
+		hasTypeCollision[name] = len(types) > 1
+	}
+
+	return func(asset discoveredAsset) string {
+		if hasTypeCollision[asset.Name] {
+			return asset.Name + "." + asset.AssetType
+		}
+		return asset.Name
+	}
 }
 
 func collectAssets(root string, include []string, exclude []string) (int, []string, []discoveredAsset, error) {

@@ -1,9 +1,11 @@
 package cli
 
 import (
+	"errors"
 	"encoding/json"
 	"fmt"
 	"io"
+	"strings"
 )
 
 const (
@@ -41,11 +43,12 @@ func Execute(args []string, stdout io.Writer, stderr io.Writer) int {
 	root.SetArgs(args)
 
 	if err := root.Execute(); err != nil {
-		if _, isUsage := err.(usageError); isUsage {
+		if isUsageExecutionError(err) {
 			writeError(stderr, "usage_error", err.Error())
 			return exitUsage
 		}
-		if _, isUnused := err.(unusedAssetsFoundError); isUnused {
+		var unusedErr unusedAssetsFoundError
+		if errors.As(err, &unusedErr) {
 			return exitUnusedAssets
 		}
 
@@ -54,6 +57,33 @@ func Execute(args []string, stdout io.Writer, stderr io.Writer) int {
 	}
 
 	return exitSuccess
+}
+
+func isUsageExecutionError(err error) bool {
+	var usageErr usageError
+	if errors.As(err, &usageErr) {
+		return true
+	}
+
+	message := strings.ToLower(err.Error())
+	usageIndicators := []string{
+		"unknown command",
+		"unknown flag",
+		"unknown shorthand flag",
+		"flag needs an argument",
+		"required flag",
+		"accepts ",
+		"requires at least",
+		"requires at most",
+		"requires exactly",
+	}
+	for _, indicator := range usageIndicators {
+		if strings.Contains(message, indicator) {
+			return true
+		}
+	}
+
+	return false
 }
 
 func writeJSON(w io.Writer, value any) error {

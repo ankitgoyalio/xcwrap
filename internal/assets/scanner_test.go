@@ -530,6 +530,15 @@ func TestScan_ExplicitImageNamedReference_DoesNotMarkSameNameColorAssetUsed(t *t
 	if err != nil {
 		t.Fatalf("scan error: %v", err)
 	}
+	if len(res.AssetNames) != 2 || res.AssetNames[0] != "logo.colorset" || res.AssetNames[1] != "logo.imageset" {
+		t.Fatalf("unexpected asset names: %#v", res.AssetNames)
+	}
+	if len(res.UsedAssets) != 1 || res.UsedAssets[0] != "logo.imageset" {
+		t.Fatalf("unexpected used assets: %#v", res.UsedAssets)
+	}
+	if len(res.UnusedAssets) != 1 || res.UnusedAssets[0] != "logo.colorset" {
+		t.Fatalf("unexpected unused assets: %#v", res.UnusedAssets)
+	}
 	unusedInCatalog, ok := res.UnusedByFile[catalog]
 	if !ok {
 		t.Fatalf("expected catalog %q in unusedByFile, got %#v", catalog, res.UnusedByFile)

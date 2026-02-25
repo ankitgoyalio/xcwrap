@@ -58,6 +58,31 @@ func TestInvalidOutputValue_ReturnsUsageError(t *testing.T) {
 	}
 }
 
+func TestUnknownSubcommand_ReturnsUsageError(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := Execute([]string{"does-not-exist"}, &stdout, &stderr)
+	if exitCode != 2 {
+		t.Fatalf("expected exit code 2, got %d", exitCode)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("expected empty stdout, got %s", stdout.String())
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(stderr.Bytes(), &payload); err != nil {
+		t.Fatalf("expected JSON error output, got err: %v, stderr=%s", err, stderr.String())
+	}
+	errVal, ok := payload["error"].(map[string]any)
+	if !ok {
+		t.Fatalf("missing error object: %v", payload)
+	}
+	if errVal["code"] != "usage_error" {
+		t.Fatalf("unexpected error code: %v", errVal["code"])
+	}
+}
+
 func TestAssetsPrune_ForceWithoutApply_IsUsageError(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
