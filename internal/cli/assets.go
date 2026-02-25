@@ -563,6 +563,10 @@ func deletePruneTargets(paths []string) error {
 
 func requireCleanGitWorkingTree(root string) error {
 	cmd := exec.Command("git", "-C", root, "status", "--porcelain")
+	cmd.Env = append(os.Environ(),
+		"GIT_TERMINAL_PROMPT=0",
+		"LC_ALL=C",
+	)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		message := strings.TrimSpace(string(out))
