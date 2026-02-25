@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -71,14 +72,20 @@ func newAssetsScanCommand(ctx *runContext) *cobra.Command {
 				return usageError{Message: "invalid value for --workers: must be >= 1"}
 			}
 
-			sortedInclude := append([]string{}, include...)
-			sortedExclude := append([]string{}, exclude...)
-			slices.Sort(sortedInclude)
-			slices.Sort(sortedExclude)
+				sortedInclude := append([]string{}, include...)
+				sortedExclude := append([]string{}, exclude...)
+				slices.Sort(sortedInclude)
+				slices.Sort(sortedExclude)
+				if err := validateGlobPatterns(sortedInclude, "include"); err != nil {
+					return err
+				}
+				if err := validateGlobPatterns(sortedExclude, "exclude"); err != nil {
+					return err
+				}
 
-			result := scanResult{
-				Command: "assets scan",
-				Path:    resolvedPath,
+				result := scanResult{
+					Command: "assets scan",
+					Path:    resolvedPath,
 				Include: sortedInclude,
 				Exclude: sortedExclude,
 				Workers: workers,
@@ -141,13 +148,19 @@ func newAssetsUnusedCommand(ctx *runContext) *cobra.Command {
 				return usageError{Message: "invalid value for --workers: must be >= 1"}
 			}
 
-			sortedInclude := append([]string{}, include...)
-			sortedExclude := append([]string{}, exclude...)
-			slices.Sort(sortedInclude)
-			slices.Sort(sortedExclude)
+				sortedInclude := append([]string{}, include...)
+				sortedExclude := append([]string{}, exclude...)
+				slices.Sort(sortedInclude)
+				slices.Sort(sortedExclude)
+				if err := validateGlobPatterns(sortedInclude, "include"); err != nil {
+					return err
+				}
+				if err := validateGlobPatterns(sortedExclude, "exclude"); err != nil {
+					return err
+				}
 
-			scan, err := assets.Scan(assets.Options{
-				Root:    resolvedPath,
+				scan, err := assets.Scan(assets.Options{
+					Root:    resolvedPath,
 				Include: sortedInclude,
 				Exclude: sortedExclude,
 				Workers: workers,
@@ -442,20 +455,65 @@ func assetNameFromPath(assetPath string) string {
 func buildUnusedByFilePayload(grouped map[string][]string) map[string]unusedFileResult {
 	out := make(map[string]unusedFileResult, len(grouped))
 	for fullPath, assetPaths := range grouped {
-		entry := unusedFileResult{UnusedAssets: []string{}}
-		for _, assetPath := range assetPaths {
-			entry.UnusedAssets = append(entry.UnusedAssets, assetNameFromPath(assetPath))
-		}
+		entry := unusedFileResult{UnusedAssets: unusedAssetDisplayNames(assetPaths)}
 		out[fullPath] = entry
 	}
 
-	for filePath, entry := range out {
-		slices.Sort(entry.UnusedAssets)
-		entry.UnusedAssets = slices.Compact(entry.UnusedAssets)
-		out[filePath] = entry
+	return out
+}
+
+func unusedAssetDisplayNames(assetPaths []string) []string {
+	if len(assetPaths) == 0 {
+		return []string{}
 	}
 
-	return out
+	type assetLabel struct {
+		name      string
+		assetType string
+	}
+	labels := make([]assetLabel, 0, len(assetPaths))
+	typesByName := make(map[string]map[string]struct{}, len(assetPaths))
+	for _, assetPath := range assetPaths {
+		base := filepath.Base(assetPath)
+		assetType := strings.TrimPrefix(filepath.Ext(base), ".")
+		name := assetNameFromPath(assetPath)
+		labels = append(labels, assetLabel{name: name, assetType: assetType})
+		if _, ok := typesByName[name]; !ok {
+			typesByName[name] = make(map[string]struct{}, 1)
+		}
+		typesByName[name][assetType] = struct{}{}
+	}
+
+	out := make([]string, 0, len(labels))
+	for _, label := range labels {
+		if len(typesByName[label.name]) > 1 && label.assetType != "" {
+			out = append(out, label.name+"."+label.assetType)
+			continue
+		}
+		out = append(out, label.name)
+	}
+
+	slices.Sort(out)
+	return slices.Compact(out)
+}
+
+func validateGlobPatterns(patterns []string, flagName string) error {
+	for _, pattern := range patterns {
+		p := filepath.ToSlash(strings.TrimSpace(pattern))
+		if p == "" {
+			continue
+		}
+		p = strings.TrimPrefix(p, "./")
+		p = strings.TrimPrefix(p, "/")
+		if strings.HasSuffix(p, "/") {
+			continue
+		}
+		if _, err := path.Match(p, ""); err != nil {
+			return usageError{Message: fmt.Sprintf("invalid value for --%s: %q (%v)", flagName, pattern, err)}
+		}
+	}
+
+	return nil
 }
 
 func collectPruneTargets(grouped map[string][]string) []string {

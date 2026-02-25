@@ -316,6 +316,40 @@ func TestAssetsScan_ExcludeFlag_AllowsAdditionalExcludes(t *testing.T) {
 	}
 }
 
+func TestAssetsScan_InvalidIncludeGlobReturnsUsageError(t *testing.T) {
+	root := t.TempDir()
+	catalog := filepath.Join(root, "Assets.xcassets")
+	if err := os.MkdirAll(filepath.Join(catalog, "used.imageset"), 0o755); err != nil {
+		t.Fatalf("mkdir asset set: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := Execute([]string{"assets", "scan", "--path", root, "--include", "["}, &stdout, &stderr)
+	if exitCode != 2 {
+		t.Fatalf("expected exit code 2, got %d", exitCode)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("expected empty stdout, got %s", stdout.String())
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(stderr.Bytes(), &payload); err != nil {
+		t.Fatalf("expected JSON error output, got err: %v, stderr=%s", err, stderr.String())
+	}
+	errVal, ok := payload["error"].(map[string]any)
+	if !ok {
+		t.Fatalf("missing error object: %v", payload)
+	}
+	if errVal["code"] != "usage_error" {
+		t.Fatalf("unexpected error code: %v", errVal["code"])
+	}
+	message, _ := errVal["message"].(string)
+	if !strings.Contains(message, "invalid value for --include") {
+		t.Fatalf("expected include validation message, got: %q", message)
+	}
+}
+
 func TestAssetsScan_ReadErrorReturnsRuntimeError(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("permission model differs on windows")
@@ -486,6 +520,85 @@ func TestAssetsUnused_ExplicitCountsWhenPruneCandidatesExceedUnusedNames(t *test
 	}
 	if payload["pruneCandidateCount"] != float64(2) {
 		t.Fatalf("expected pruneCandidateCount=2, got %v", payload["pruneCandidateCount"])
+	}
+}
+
+func TestAssetsUnused_InvalidExcludeGlobReturnsUsageError(t *testing.T) {
+	root := t.TempDir()
+	catalog := filepath.Join(root, "Assets.xcassets")
+	if err := os.MkdirAll(filepath.Join(catalog, "unused.imageset"), 0o755); err != nil {
+		t.Fatalf("mkdir asset set: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := Execute([]string{"assets", "unused", "--path", root, "--exclude", "["}, &stdout, &stderr)
+	if exitCode != 2 {
+		t.Fatalf("expected exit code 2, got %d", exitCode)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("expected empty stdout, got %s", stdout.String())
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(stderr.Bytes(), &payload); err != nil {
+		t.Fatalf("expected JSON error output, got err: %v, stderr=%s", err, stderr.String())
+	}
+	errVal, ok := payload["error"].(map[string]any)
+	if !ok {
+		t.Fatalf("missing error object: %v", payload)
+	}
+	if errVal["code"] != "usage_error" {
+		t.Fatalf("unexpected error code: %v", errVal["code"])
+	}
+	message, _ := errVal["message"].(string)
+	if !strings.Contains(message, "invalid value for --exclude") {
+		t.Fatalf("expected exclude validation message, got: %q", message)
+	}
+}
+
+func TestAssetsUnused_UnusedByFilePreservesTypeDistinctNames(t *testing.T) {
+	root := t.TempDir()
+	catalog := filepath.Join(root, "Assets.xcassets")
+	if err := os.MkdirAll(filepath.Join(catalog, "logo.imageset"), 0o755); err != nil {
+		t.Fatalf("mkdir image asset set: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(catalog, "logo.colorset"), 0o755); err != nil {
+		t.Fatalf("mkdir color asset set: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := Execute([]string{"assets", "unused", "--path", root}, &stdout, &stderr)
+	if exitCode != 3 {
+		t.Fatalf("expected exit code 3, got %d, stderr=%s", exitCode, stderr.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got %s", stderr.String())
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &payload); err != nil {
+		t.Fatalf("expected JSON output, got err: %v, stdout=%s", err, stdout.String())
+	}
+	grouped, ok := payload["unusedByFile"].(map[string]any)
+	if !ok {
+		t.Fatalf("unexpected unusedByFile payload: %#v", payload["unusedByFile"])
+	}
+	rawEntry, ok := grouped[catalog]
+	if !ok {
+		t.Fatalf("expected catalog %q in unusedByFile payload, got %#v", catalog, grouped)
+	}
+	entry, ok := rawEntry.(map[string]any)
+	if !ok {
+		t.Fatalf("unexpected entry type for catalog %s: %#v", catalog, rawEntry)
+	}
+	unusedAssets, ok := entry["unusedAssets"].([]any)
+	if !ok {
+		t.Fatalf("unexpected unusedAssets payload: %#v", entry["unusedAssets"])
+	}
+	if len(unusedAssets) != 2 || unusedAssets[0] != "logo.colorset" || unusedAssets[1] != "logo.imageset" {
+		t.Fatalf("expected type-distinct unusedAssets, got %#v", unusedAssets)
 	}
 }
 
