@@ -354,6 +354,52 @@ func TestAssetsScan_ExcludeFlag_CommaSeparatedValuesExcludeMultiplePaths(t *test
 	}
 }
 
+func TestAssetsScan_OutputNormalizesIncludeExcludePatterns(t *testing.T) {
+	root := t.TempDir()
+	catalog := filepath.Join(root, "Assets.xcassets")
+	if err := os.MkdirAll(filepath.Join(catalog, "used.imageset"), 0o755); err != nil {
+		t.Fatalf("mkdir asset set: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "Main.swift"), []byte(`let _ = UIImage(named: "used")`), 0o644); err != nil {
+		t.Fatalf("write source: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := Execute(
+		[]string{"assets", "scan", "--path", root, "--include", " Sources/** ", "--exclude", " Pods/** ,  vendor/** "},
+		&stdout,
+		&stderr,
+	)
+	if exitCode != 0 {
+		t.Fatalf("expected exit code 0, got %d, stderr=%s", exitCode, stderr.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got %s", stderr.String())
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &payload); err != nil {
+		t.Fatalf("expected JSON output, got err: %v", err)
+	}
+
+	include, ok := payload["include"].([]any)
+	if !ok {
+		t.Fatalf("missing include payload: %#v", payload["include"])
+	}
+	if len(include) != 1 || include[0] != "Sources/**" {
+		t.Fatalf("unexpected include payload: %#v", include)
+	}
+
+	exclude, ok := payload["exclude"].([]any)
+	if !ok {
+		t.Fatalf("missing exclude payload: %#v", payload["exclude"])
+	}
+	if len(exclude) != 2 || exclude[0] != "Pods/**" || exclude[1] != "vendor/**" {
+		t.Fatalf("unexpected exclude payload: %#v", exclude)
+	}
+}
+
 func TestAssetsScan_InvalidIncludeGlobReturnsUsageError(t *testing.T) {
 	root := t.TempDir()
 	catalog := filepath.Join(root, "Assets.xcassets")
@@ -426,7 +472,7 @@ func TestAssetsScan_ReadErrorReturnsRuntimeError(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("permission model differs on windows")
 	}
-	if runtime.GOOS != "windows" && os.Geteuid() == 0 {
+	if os.Geteuid() == 0 {
 		t.Skip("permission test is unreliable when running as root")
 	}
 
@@ -458,12 +504,17 @@ func TestAssetsScan_ReadErrorReturnsRuntimeError(t *testing.T) {
 		done <- Execute([]string{"assets", "scan", "--path", root}, &stdout, &stderr)
 	}()
 
+	timeout := 10 * time.Second
+	if testing.Short() {
+		timeout = 3 * time.Second
+	}
+
 	select {
 	case exitCode := <-done:
 		if exitCode != 1 {
 			t.Fatalf("expected exit code 1, got %d", exitCode)
 		}
-	case <-time.After(3 * time.Second):
+	case <-time.After(timeout):
 		t.Fatal("execute deadlocked after file read error")
 	}
 
@@ -936,8 +987,21 @@ func initCleanGitRepo(t *testing.T, root string) {
 func runGit(t *testing.T, root string, args ...string) {
 	t.Helper()
 	cmd := exec.Command("git", append([]string{"-C", root}, args...)...)
+	cmd.Env = withEnvVar(os.Environ(), "LC_ALL", "C")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("git %v failed: %v, output=%s", args, err, strings.TrimSpace(string(out)))
 	}
+}
+
+func withEnvVar(base []string, key, value string) []string {
+	prefix := key + "="
+	for i, entry := range base {
+		if strings.HasPrefix(entry, prefix) {
+			updated := append([]string{}, base...)
+			updated[i] = prefix + value
+			return updated
+		}
+	}
+	return append(base, prefix+value)
 }

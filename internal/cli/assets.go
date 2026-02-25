@@ -53,6 +53,52 @@ type scanResult struct {
 	} `json:"summary"`
 }
 
+func runAssetScan(path string, include []string, exclude []string, workers int) (string, []string, []string, assets.Result, error) {
+	resolvedPath, err := resolveScanPath(path)
+	if err != nil {
+		return "", nil, nil, assets.Result{}, err
+	}
+
+	if workers < 1 {
+		return "", nil, nil, assets.Result{}, usageError{Message: "invalid value for --workers: must be >= 1"}
+	}
+
+	sortedInclude := normalizePatterns(include)
+	sortedExclude := normalizePatterns(exclude)
+	slices.Sort(sortedInclude)
+	slices.Sort(sortedExclude)
+	if err := validateGlobPatterns(sortedInclude, "include"); err != nil {
+		return "", nil, nil, assets.Result{}, err
+	}
+	if err := validateGlobPatterns(sortedExclude, "exclude"); err != nil {
+		return "", nil, nil, assets.Result{}, err
+	}
+
+	scan, err := assets.Scan(assets.Options{
+		Root:    resolvedPath,
+		Include: sortedInclude,
+		Exclude: sortedExclude,
+		Workers: workers,
+	})
+	if err != nil {
+		return "", nil, nil, assets.Result{}, err
+	}
+
+	return resolvedPath, sortedInclude, sortedExclude, scan, nil
+}
+
+func normalizePatterns(patterns []string) []string {
+	normalized := make([]string, 0, len(patterns))
+	for _, pattern := range patterns {
+		trimmed := strings.TrimSpace(pattern)
+		if trimmed == "" {
+			continue
+		}
+		normalized = append(normalized, trimmed)
+	}
+	return normalized
+}
+
 func newAssetsScanCommand(ctx *runContext) *cobra.Command {
 	var path string
 	var include []string
@@ -63,23 +109,8 @@ func newAssetsScanCommand(ctx *runContext) *cobra.Command {
 		Use:   "scan",
 		Short: "Scan project assets and references",
 		RunE: func(_ *cobra.Command, _ []string) error {
-			resolvedPath, err := resolveScanPath(path)
+			resolvedPath, sortedInclude, sortedExclude, scan, err := runAssetScan(path, include, exclude, workers)
 			if err != nil {
-				return err
-			}
-
-			if workers < 1 {
-				return usageError{Message: "invalid value for --workers: must be >= 1"}
-			}
-
-			sortedInclude := append([]string{}, include...)
-			sortedExclude := append([]string{}, exclude...)
-			slices.Sort(sortedInclude)
-			slices.Sort(sortedExclude)
-			if err := validateGlobPatterns(sortedInclude, "include"); err != nil {
-				return err
-			}
-			if err := validateGlobPatterns(sortedExclude, "exclude"); err != nil {
 				return err
 			}
 
@@ -89,15 +120,6 @@ func newAssetsScanCommand(ctx *runContext) *cobra.Command {
 				Include: sortedInclude,
 				Exclude: sortedExclude,
 				Workers: workers,
-			}
-			scan, err := assets.Scan(assets.Options{
-				Root:    resolvedPath,
-				Include: sortedInclude,
-				Exclude: sortedExclude,
-				Workers: workers,
-			})
-			if err != nil {
-				return err
 			}
 			result.Summary.AssetCatalogs = scan.AssetCatalogs
 			result.Summary.AssetSets = len(scan.AssetNames)
@@ -110,7 +132,7 @@ func newAssetsScanCommand(ctx *runContext) *cobra.Command {
 
 	cmd.Flags().StringVar(&path, "path", ".", "Path to scan")
 	cmd.Flags().StringSliceVar(&include, "include", nil, "Include path globs")
-	cmd.Flags().StringSliceVar(&exclude, "exclude", append([]string{}, defaultExcludedPaths...), "Exclude path globs (repeatable)")
+	cmd.Flags().StringSliceVar(&exclude, "exclude", append([]string{}, defaultExcludedPaths...), "Exclude path globs (replaces defaults; repeatable, comma-separated)")
 	cmd.Flags().IntVar(&workers, "workers", defaultWorkers(), "Worker count")
 
 	return cmd
@@ -139,32 +161,7 @@ func newAssetsUnusedCommand(ctx *runContext) *cobra.Command {
 		Use:   "unused",
 		Short: "Detect unused assets",
 		RunE: func(_ *cobra.Command, _ []string) error {
-			resolvedPath, err := resolveScanPath(path)
-			if err != nil {
-				return err
-			}
-
-			if workers < 1 {
-				return usageError{Message: "invalid value for --workers: must be >= 1"}
-			}
-
-			sortedInclude := append([]string{}, include...)
-			sortedExclude := append([]string{}, exclude...)
-			slices.Sort(sortedInclude)
-			slices.Sort(sortedExclude)
-			if err := validateGlobPatterns(sortedInclude, "include"); err != nil {
-				return err
-			}
-			if err := validateGlobPatterns(sortedExclude, "exclude"); err != nil {
-				return err
-			}
-
-			scan, err := assets.Scan(assets.Options{
-				Root:    resolvedPath,
-				Include: sortedInclude,
-				Exclude: sortedExclude,
-				Workers: workers,
-			})
+			resolvedPath, _, _, scan, err := runAssetScan(path, include, exclude, workers)
 			if err != nil {
 				return err
 			}
@@ -195,7 +192,7 @@ func newAssetsUnusedCommand(ctx *runContext) *cobra.Command {
 
 	cmd.Flags().StringVar(&path, "path", ".", "Path to scan")
 	cmd.Flags().StringSliceVar(&include, "include", nil, "Include path globs")
-	cmd.Flags().StringSliceVar(&exclude, "exclude", append([]string{}, defaultExcludedPaths...), "Exclude path globs (repeatable)")
+	cmd.Flags().StringSliceVar(&exclude, "exclude", append([]string{}, defaultExcludedPaths...), "Exclude path globs (replaces defaults; repeatable, comma-separated)")
 	cmd.Flags().IntVar(&workers, "workers", defaultWorkers(), "Worker count")
 	return cmd
 }
@@ -580,13 +577,22 @@ func deletePruneTargets(root string, paths []string) error {
 		return fmt.Errorf("failed to resolve prune root %q: %w", root, err)
 	}
 	rootIsCatalog := strings.EqualFold(filepath.Ext(rootAbs), ".xcassets")
+	resolvedRootAbs, err := filepath.EvalSymlinks(rootAbs)
+	if err != nil {
+		return fmt.Errorf("failed to resolve prune root symlinks %q: %w", root, err)
+	}
+	rootIsCatalog = rootIsCatalog || strings.EqualFold(filepath.Ext(resolvedRootAbs), ".xcassets")
 
 	for _, path := range paths {
 		absPath, err := filepath.Abs(path)
 		if err != nil {
 			return fmt.Errorf("failed to resolve prune target %q: %w", path, err)
 		}
-		rel, err := filepath.Rel(rootAbs, absPath)
+		absPath, err = filepath.EvalSymlinks(absPath)
+		if err != nil {
+			return fmt.Errorf("failed to resolve prune target symlinks %q: %w", path, err)
+		}
+		rel, err := filepath.Rel(resolvedRootAbs, absPath)
 		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
 			return fmt.Errorf("refusing to delete path outside root: %s", path)
 		}
@@ -597,6 +603,8 @@ func deletePruneTargets(root string, paths []string) error {
 		if !isPrunableAssetSetPath(path) {
 			return fmt.Errorf("refusing to delete non-asset-set path: %s", path)
 		}
+		// Remove the original path (the symlink entry itself), not the resolved
+		// absPath target.
 		if err := os.RemoveAll(path); err != nil {
 			return fmt.Errorf("failed to delete %s: %w", path, err)
 		}
