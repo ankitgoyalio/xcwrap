@@ -6,7 +6,6 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"path"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -14,6 +13,7 @@ import (
 	"strings"
 	"text/tabwriter"
 
+	"github.com/bmatcuk/doublestar/v4"
 	"github.com/spf13/cobra"
 	"xcwrap/internal/assets"
 )
@@ -531,8 +531,8 @@ func validateGlobPatterns(patterns []string, flagName string) error {
 		if strings.HasSuffix(p, "/") {
 			continue
 		}
-		if _, err := path.Match(p, ""); err != nil {
-			return usageError{Message: fmt.Sprintf("invalid value for --%s: %q (%v)", flagName, pattern, err)}
+		if !doublestar.ValidatePattern(p) {
+			return usageError{Message: fmt.Sprintf("invalid value for --%s: %q (invalid glob pattern)", flagName, pattern)}
 		}
 	}
 
