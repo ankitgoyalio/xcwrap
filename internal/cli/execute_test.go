@@ -936,9 +936,21 @@ func initCleanGitRepo(t *testing.T, root string) {
 func runGit(t *testing.T, root string, args ...string) {
 	t.Helper()
 	cmd := exec.Command("git", append([]string{"-C", root}, args...)...)
-	cmd.Env = append(os.Environ(), "LC_ALL=C")
+	cmd.Env = withEnvVar(os.Environ(), "LC_ALL", "C")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("git %v failed: %v, output=%s", args, err, strings.TrimSpace(string(out)))
 	}
+}
+
+func withEnvVar(base []string, key, value string) []string {
+	prefix := key + "="
+	for i, entry := range base {
+		if strings.HasPrefix(entry, prefix) {
+			updated := append([]string{}, base...)
+			updated[i] = prefix + value
+			return updated
+		}
+	}
+	return append(base, prefix+value)
 }
