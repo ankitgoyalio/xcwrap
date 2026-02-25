@@ -103,13 +103,7 @@ func TestAssetsScan_ExpandsTildePath(t *testing.T) {
 		t.Fatalf("failed to create project dir: %v", err)
 	}
 
-	prevHome := os.Getenv("HOME")
-	if err := os.Setenv("HOME", homeDir); err != nil {
-		t.Fatalf("failed to set HOME: %v", err)
-	}
-	t.Cleanup(func() {
-		_ = os.Setenv("HOME", prevHome)
-	})
+	t.Setenv("HOME", homeDir)
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
