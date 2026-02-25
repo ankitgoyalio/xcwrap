@@ -664,7 +664,7 @@ func TestScan_FindsSwiftTypedImageResourceIdentifiers_FromScalarAssignment(t *te
 	}
 }
 
-func TestScan_FindsSwiftLabeledResourceMemberReferences(t *testing.T) {
+func TestScan_DoesNotInferAssetUsageFromLabeledResourceLikeMembers(t *testing.T) {
 	root := t.TempDir()
 	catalog := filepath.Join(root, "App", "Assets.xcassets")
 	if err := os.MkdirAll(filepath.Join(catalog, "dashboardTSCountIcon.imageset"), 0o755); err != nil {
@@ -684,6 +684,73 @@ let action = makeAction(title: "x", imageResource: .dropDownMarkAsSent) { _ in }
 `
 	if err := os.WriteFile(swiftPath, []byte(content), 0o644); err != nil {
 		t.Fatalf("write swift source: %v", err)
+	}
+
+	res, err := Scan(Options{Root: root, Workers: 2})
+	if err != nil {
+		t.Fatalf("scan error: %v", err)
+	}
+	if len(res.UsedAssets) != 0 {
+		t.Fatalf("expected no used assets, got %#v", res.UsedAssets)
+	}
+	if len(res.UnusedAssets) != 3 {
+		t.Fatalf("expected all labeled-member assets to remain unused, got %#v", res.UnusedAssets)
+	}
+}
+
+func TestScan_DoesNotTreatLabeledEnumMembersAsAssetReferences(t *testing.T) {
+	root := t.TempDir()
+	catalog := filepath.Join(root, "App", "Assets.xcassets")
+	if err := os.MkdirAll(filepath.Join(catalog, "warning.imageset"), 0o755); err != nil {
+		t.Fatalf("mkdir image asset set: %v", err)
+	}
+
+	swiftPath := filepath.Join(root, "App", "Alert.swift")
+	content := `enum AlertIcon {
+    case warning
+}
+
+func render(icon: AlertIcon) {}
+
+render(icon: .warning)
+`
+	if err := os.WriteFile(swiftPath, []byte(content), 0o644); err != nil {
+		t.Fatalf("write swift source: %v", err)
+	}
+
+	res, err := Scan(Options{Root: root, Workers: 2})
+	if err != nil {
+		t.Fatalf("scan error: %v", err)
+	}
+	if len(res.UsedAssets) != 0 {
+		t.Fatalf("expected no used assets, got %#v", res.UsedAssets)
+	}
+	if len(res.UnusedAssets) != 1 || res.UnusedAssets[0] != "warning" {
+		t.Fatalf("expected warning to remain unused, got %#v", res.UnusedAssets)
+	}
+}
+
+func TestScan_FindsLabeledMembersWhenLabelIsTypedAsImageResource(t *testing.T) {
+	root := t.TempDir()
+	catalog := filepath.Join(root, "App", "Assets.xcassets")
+	if err := os.MkdirAll(filepath.Join(catalog, "dashboardTSCountIcon.imageset"), 0o755); err != nil {
+		t.Fatalf("mkdir image asset set: %v", err)
+	}
+
+	componentPath := filepath.Join(root, "App", "DashboardInfoView.swift")
+	componentContent := `struct DashboardInfoView {
+    func setData(icon: ImageResource, fieldName: String, value: String) {}
+}`
+	if err := os.WriteFile(componentPath, []byte(componentContent), 0o644); err != nil {
+		t.Fatalf("write component: %v", err)
+	}
+
+	usagePath := filepath.Join(root, "App", "Home.swift")
+	usageContent := `func render(view: DashboardInfoView) {
+    view.setData(icon: .dashboardTSCountIcon, fieldName: "x", value: "y")
+}`
+	if err := os.WriteFile(usagePath, []byte(usageContent), 0o644); err != nil {
+		t.Fatalf("write usage: %v", err)
 	}
 
 	res, err := Scan(Options{Root: root, Workers: 2})

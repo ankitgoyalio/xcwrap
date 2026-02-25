@@ -28,7 +28,7 @@ var swiftNamedColorAssetRefRe = regexp.MustCompile(`\b(?:UI|NS)?Color\s*\(\s*(?:
 var swiftNamedDataAssetRefRe = regexp.MustCompile(`\b(?:NS)?DataAsset\s*\(\s*(?:named|name)\s*:\s*"([A-Za-z0-9._ -]+)"`)
 var swiftUIImageAssetRefRe = regexp.MustCompile(`\bImage\s*\(\s*"([A-Za-z0-9._ -]+)"(?:\s*,[^)]*)?\)`)
 var swiftUIColorAssetRefRe = regexp.MustCompile(`\bColor\s*\(\s*"([A-Za-z0-9._ -]+)"(?:\s*,[^)]*)?\)`)
-var swiftLabeledResourceMemberRefRe = regexp.MustCompile(`\b(?:icon|moduleIcon|illustration|illustrationName|imageResource)\s*:\s*\.([A-Za-z_][A-Za-z0-9_]*)`)
+var swiftResourceParameterRe = regexp.MustCompile(`(?:^|[,(])\s*([A-Za-z_][A-Za-z0-9_]*|_)\s*(?:[A-Za-z_][A-Za-z0-9_]*)?\s*:\s*(?:\[[ \t]*)?(ImageResource|ColorResource)(?:[ \t]*\])?\s*[!?]?`)
 var objcImageNamedAssetRefRe = regexp.MustCompile(`\b(?:UI|NS)Image\s+imageNamed:\s*@\"([A-Za-z0-9._ -]+)\"`)
 var objcImageNamedVariableRefRe = regexp.MustCompile(`\b(?:UI|NS)Image\s+imageNamed:\s*([A-Za-z_][A-Za-z0-9_]*)`)
 var objcColorNamedAssetRefRe = regexp.MustCompile(`\b(?:UI|NS)Color\s+colorNamed:\s*@\"([A-Za-z0-9._ -]+)\"`)
@@ -243,6 +243,10 @@ func collectUsedAssets(root string, include []string, exclude []string, discover
 		assetPathsByTypeAndName[typeKey] = append(assetPathsByTypeAndName[typeKey], asset)
 	}
 	swiftResourceCandidates := buildSwiftResourceCandidateIndex(discoveredAssets)
+	swiftResourceLabelAssetTypes, err := collectSwiftResourceArgumentLabelAssetTypes(root, include, exclude)
+	if err != nil {
+		return nil, err
+	}
 
 	markUsed := func(sourcePath string, name string, assetType string) {
 		var (
@@ -290,7 +294,7 @@ func collectUsedAssets(root string, include []string, exclude []string, discover
 						markUsed(path, name, "")
 					}
 				default:
-					for _, ref := range extractExplicitSourceAssetReferences(content) {
+					for _, ref := range extractExplicitSourceAssetReferences(content, swiftResourceLabelAssetTypes) {
 						markUsed(path, ref.Name, ref.AssetType)
 					}
 				}
@@ -575,7 +579,7 @@ func extractEnumIdentifiersForSwiftVar(content string, varName string) []string 
 	return out
 }
 
-func extractExplicitSourceAssetReferences(content string) []sourceAssetReference {
+func extractExplicitSourceAssetReferences(content string, labelAssetTypes map[string]map[string]struct{}) []sourceAssetReference {
 	results := make([]sourceAssetReference, 0, 16)
 	seen := make(map[string]struct{})
 
@@ -603,7 +607,14 @@ func extractExplicitSourceAssetReferences(content string) []sourceAssetReference
 	appendTypedMatches(swiftNamedDataAssetRefRe, "dataset")
 	appendTypedMatches(swiftUIImageAssetRefRe, "imageset")
 	appendTypedMatches(swiftUIColorAssetRefRe, "colorset")
-	appendTypedMatches(swiftLabeledResourceMemberRefRe, "imageset")
+	for _, ref := range extractSwiftLabeledResourceArgumentReferences(content, labelAssetTypes) {
+		key := sourceAssetTypeKey(ref.Name, ref.AssetType)
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		results = append(results, ref)
+	}
 	appendTypedMatches(objcImageNamedAssetRefRe, "imageset")
 	appendTypedMatches(objcColorNamedAssetRefRe, "colorset")
 	appendTypedMatches(objcDataAssetNameRefRe, "dataset")
@@ -617,6 +628,122 @@ func extractExplicitSourceAssetReferences(content string) []sourceAssetReference
 	}
 
 	return results
+}
+
+func collectSwiftResourceArgumentLabelAssetTypes(root string, include []string, exclude []string) (map[string]map[string]struct{}, error) {
+	labels := make(map[string]map[string]struct{})
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			if d.Name() == ".git" {
+				return filepath.SkipDir
+			}
+			rel, relErr := filepath.Rel(root, path)
+			if relErr != nil {
+				return relErr
+			}
+			if matchesAny(rel, exclude) {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+
+		if strings.Contains(path, ".xcassets"+string(filepath.Separator)) {
+			return nil
+		}
+
+		rel, relErr := filepath.Rel(root, path)
+		if relErr != nil {
+			return relErr
+		}
+		if matchesAny(rel, exclude) {
+			return nil
+		}
+		if len(include) > 0 && !matchesAny(rel, include) {
+			return nil
+		}
+		if strings.ToLower(filepath.Ext(path)) != ".swift" {
+			return nil
+		}
+
+		content, readErr := osReadFile(path)
+		if readErr != nil {
+			return readErr
+		}
+		for _, m := range swiftResourceParameterRe.FindAllStringSubmatch(content, -1) {
+			if len(m) < 3 {
+				continue
+			}
+			label := strings.TrimSpace(m[1])
+			resourceType := strings.TrimSpace(m[2])
+			if label == "" || label == "_" || resourceType == "" {
+				continue
+			}
+			assetType := resourceTypeToAssetType(resourceType)
+			if assetType == "" {
+				continue
+			}
+			if _, exists := labels[label]; !exists {
+				labels[label] = make(map[string]struct{}, 1)
+			}
+			labels[label][assetType] = struct{}{}
+		}
+
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return labels, nil
+}
+
+func resourceTypeToAssetType(resourceType string) string {
+	switch resourceType {
+	case "ImageResource":
+		return "imageset"
+	case "ColorResource":
+		return "colorset"
+	default:
+		return ""
+	}
+}
+
+func extractSwiftLabeledResourceArgumentReferences(content string, labelAssetTypes map[string]map[string]struct{}) []sourceAssetReference {
+	if len(labelAssetTypes) == 0 {
+		return nil
+	}
+
+	labels := make([]string, 0, len(labelAssetTypes))
+	for label := range labelAssetTypes {
+		labels = append(labels, label)
+	}
+	slices.Sort(labels)
+
+	seen := make(map[string]struct{})
+	out := make([]sourceAssetReference, 0, 8)
+	for _, label := range labels {
+		re := regexp.MustCompile(`\b` + regexp.QuoteMeta(label) + `\s*:\s*\.([A-Za-z_][A-Za-z0-9_]*)`)
+		for _, m := range re.FindAllStringSubmatch(content, -1) {
+			if len(m) < 2 {
+				continue
+			}
+			name := strings.TrimSpace(m[1])
+			if name == "" {
+				continue
+			}
+			for assetType := range labelAssetTypes[label] {
+				key := sourceAssetTypeKey(name, assetType)
+				if _, exists := seen[key]; exists {
+					continue
+				}
+				seen[key] = struct{}{}
+				out = append(out, sourceAssetReference{Name: name, AssetType: assetType})
+			}
+		}
+	}
+	return out
 }
 
 func sourceAssetTypeKey(name string, assetType string) string {
