@@ -74,9 +74,6 @@ func Scan(opts Options) (Result, error) {
 	if workers < 1 {
 		workers = runtime.NumCPU()
 	}
-	if workers < 1 {
-		workers = 1
-	}
 
 	assetCatalogs, _, discoveredAssets, err := collectAssets(opts.Root, opts.Include, opts.Exclude)
 	if err != nil {
