@@ -74,4 +74,7 @@ func TestDeletePruneTargets_RejectsSymlinkTargetOutsideRoot(t *testing.T) {
 	if !strings.Contains(err.Error(), "outside root") {
 		t.Fatalf("expected outside-root rejection, got %v", err)
 	}
+	if _, statErr := os.Lstat(linkPath); statErr != nil {
+		t.Fatalf("expected symlink to remain after rejection, stat err=%v", statErr)
+	}
 }
