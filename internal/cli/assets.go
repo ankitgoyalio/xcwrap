@@ -391,7 +391,7 @@ func renderUnusedResult(w io.Writer, output string, result unusedResult) error {
 				return err
 			}
 			for _, file := range sortedStringKeys(result.UnusedByFile) {
-				if _, err := fmt.Fprintf(tw, "%s\n", filepath.Base(file)); err != nil {
+				if _, err := fmt.Fprintf(tw, "%s\n", file); err != nil {
 					return err
 				}
 				for _, asset := range result.UnusedByFile[file].UnusedAssets {

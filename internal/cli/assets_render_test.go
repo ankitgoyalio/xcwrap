@@ -34,3 +34,33 @@ func TestRenderPruneResult_TableUsesAlignedColumns(t *testing.T) {
 		t.Fatalf("expected table row values in output, got %q", rendered)
 	}
 }
+
+func TestRenderUnusedResult_TablePreservesCatalogIdentity(t *testing.T) {
+	var out bytes.Buffer
+	result := unusedResult{
+		Command:             "assets unused",
+		Path:                "/tmp/repo",
+		UnusedCount:         2,
+		PruneCandidateCount: 2,
+		Unused:              []string{"icon"},
+		UnusedByFile: map[string]unusedFileResult{
+			"/tmp/repo/Modules/A/Assets.xcassets": {UnusedAssets: []string{"icon.imageset"}},
+			"/tmp/repo/Modules/B/Assets.xcassets": {UnusedAssets: []string{"icon.imageset"}},
+		},
+	}
+
+	if err := renderUnusedResult(&out, outputTable, result); err != nil {
+		t.Fatalf("render unused table: %v", err)
+	}
+
+	rendered := out.String()
+	if strings.Contains(rendered, "\nAssets.xcassets\n  -  icon.imageset\nAssets.xcassets\n") {
+		t.Fatalf("expected distinct catalog paths in output, got collapsed basenames: %q", rendered)
+	}
+	if !strings.Contains(rendered, "/tmp/repo/Modules/A/Assets.xcassets") {
+		t.Fatalf("expected module A catalog path in output, got %q", rendered)
+	}
+	if !strings.Contains(rendered, "/tmp/repo/Modules/B/Assets.xcassets") {
+		t.Fatalf("expected module B catalog path in output, got %q", rendered)
+	}
+}
