@@ -243,7 +243,7 @@ func collectUsedAssets(root string, include []string, exclude []string, discover
 		assetPathsByTypeAndName[typeKey] = append(assetPathsByTypeAndName[typeKey], asset)
 	}
 	swiftResourceCandidates := buildSwiftResourceCandidateIndex(discoveredAssets)
-	swiftResourceLabelAssetTypes, err := collectSwiftResourceArgumentLabelAssetTypes(root, include, exclude)
+	swiftResourceLabelAssetTypes, swiftSourceContents, err := collectSwiftResourceArgumentLabelAssetTypes(root, include, exclude)
 	if err != nil {
 		return nil, err
 	}
@@ -278,16 +278,19 @@ func collectUsedAssets(root string, include []string, exclude []string, discover
 		go func() {
 			defer wg.Done()
 			for path := range fileCh {
-				content, err := osReadFile(path)
-				if err != nil {
-					select {
-					case errCh <- err:
-					default:
-					}
-					continue
-				}
-
 				ext := strings.ToLower(filepath.Ext(path))
+				content, ok := swiftSourceContents[path]
+				if !ok {
+					var err error
+					content, err = osReadFile(path)
+					if err != nil {
+						select {
+						case errCh <- err:
+						default:
+						}
+						continue
+					}
+				}
 				switch ext {
 				case ".storyboard", ".xib":
 					for _, ref := range extractIBAssetReferences(content) {
@@ -486,10 +489,10 @@ func extractSwiftTypedResourceIdentifiers(content string) []string {
 			if _, exists := seenIdentifiers[identifier]; exists {
 				continue
 			}
-				seenIdentifiers[identifier] = struct{}{}
-				identifiers = append(identifiers, identifier)
-			}
+			seenIdentifiers[identifier] = struct{}{}
+			identifiers = append(identifiers, identifier)
 		}
+	}
 	return identifiers
 }
 
@@ -646,8 +649,9 @@ func extractExplicitSourceAssetReferences(content string, labelAssetTypes map[st
 	return results
 }
 
-func collectSwiftResourceArgumentLabelAssetTypes(root string, include []string, exclude []string) (map[string]map[string]struct{}, error) {
+func collectSwiftResourceArgumentLabelAssetTypes(root string, include []string, exclude []string) (map[string]map[string]struct{}, map[string]string, error) {
 	labels := make(map[string]map[string]struct{})
+	swiftSources := make(map[string]string)
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -688,6 +692,7 @@ func collectSwiftResourceArgumentLabelAssetTypes(root string, include []string, 
 		if readErr != nil {
 			return readErr
 		}
+		swiftSources[path] = content
 		for _, m := range swiftResourceParameterRe.FindAllStringSubmatch(content, -1) {
 			if len(m) < 3 {
 				continue
@@ -710,9 +715,9 @@ func collectSwiftResourceArgumentLabelAssetTypes(root string, include []string, 
 		return nil
 	})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return labels, nil
+	return labels, swiftSources, nil
 }
 
 func resourceTypeToAssetType(resourceType string) string {
