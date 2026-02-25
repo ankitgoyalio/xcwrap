@@ -246,6 +246,95 @@ func TestScan_FindsStoryboardImageReferences(t *testing.T) {
 	}
 }
 
+func TestScan_IgnoresGenericStoryboardNameAttributes(t *testing.T) {
+	root := t.TempDir()
+	catalog := filepath.Join(root, "App", "Assets.xcassets")
+	if err := os.MkdirAll(filepath.Join(catalog, "capability.imageset"), 0o755); err != nil {
+		t.Fatalf("mkdir asset set: %v", err)
+	}
+
+	storyboard := `<?xml version="1.0" encoding="UTF-8"?>
+<document type="com.apple.InterfaceBuilder3.CocoaTouch.Storyboard.XIB">
+    <capabilities>
+        <capability name="capability" minToolsVersion="8.0"/>
+    </capabilities>
+</document>`
+	if err := os.WriteFile(filepath.Join(root, "Main.storyboard"), []byte(storyboard), 0o644); err != nil {
+		t.Fatalf("write storyboard: %v", err)
+	}
+
+	res, err := Scan(Options{Root: root, Workers: 2})
+	if err != nil {
+		t.Fatalf("scan error: %v", err)
+	}
+	if len(res.UsedAssets) != 0 {
+		t.Fatalf("expected no used assets, got %#v", res.UsedAssets)
+	}
+	if len(res.UnusedAssets) != 1 || res.UnusedAssets[0] != "capability" {
+		t.Fatalf("expected capability to remain unused, got %#v", res.UnusedAssets)
+	}
+}
+
+func TestScan_FindsIBImageTagNameReferences(t *testing.T) {
+	root := t.TempDir()
+	catalog := filepath.Join(root, "App", "Assets.xcassets")
+	if err := os.MkdirAll(filepath.Join(catalog, "starRatingIcon.imageset"), 0o755); err != nil {
+		t.Fatalf("mkdir asset set: %v", err)
+	}
+
+	xib := `<?xml version="1.0" encoding="UTF-8"?>
+<document type="com.apple.InterfaceBuilder3.CocoaTouch.XIB">
+    <resources>
+        <image name="starRatingIcon" width="16" height="16"/>
+    </resources>
+</document>`
+	if err := os.WriteFile(filepath.Join(root, "RatingView.xib"), []byte(xib), 0o644); err != nil {
+		t.Fatalf("write xib: %v", err)
+	}
+
+	res, err := Scan(Options{Root: root, Workers: 2})
+	if err != nil {
+		t.Fatalf("scan error: %v", err)
+	}
+	if len(res.UnusedAssets) != 0 {
+		t.Fatalf("unexpected unused assets: %#v", res.UnusedAssets)
+	}
+}
+
+func TestScan_FindsIBColorTagNameReferences(t *testing.T) {
+	root := t.TempDir()
+	catalog := filepath.Join(root, "App", "Assets.xcassets")
+	if err := os.MkdirAll(filepath.Join(catalog, "notificationBackgroundViewColor.colorset"), 0o755); err != nil {
+		t.Fatalf("mkdir asset set: %v", err)
+	}
+
+	storyboard := `<?xml version="1.0" encoding="UTF-8"?>
+<document type="com.apple.InterfaceBuilder3.CocoaTouch.Storyboard.XIB">
+    <scenes>
+        <scene>
+            <objects>
+                <viewController>
+                    <view key="view">
+                        <color key="backgroundColor" name="notificationBackgroundViewColor"/>
+                    </view>
+                </viewController>
+            </objects>
+        </scene>
+    </scenes>
+</document>`
+	if err := os.WriteFile(filepath.Join(root, "Main.storyboard"), []byte(storyboard), 0o644); err != nil {
+		t.Fatalf("write storyboard: %v", err)
+	}
+
+	res, err := Scan(Options{Root: root, Workers: 2})
+	if err != nil {
+		t.Fatalf("scan error: %v", err)
+	}
+	if len(res.UnusedAssets) != 0 {
+		t.Fatalf("unexpected unused assets: %#v", res.UnusedAssets)
+	}
+}
+
 func TestScan_FindsSwiftUIImageResourceReference_WithIdentifier(t *testing.T) {
 	root := t.TempDir()
 	catalog := filepath.Join(root, "App", "Assets.xcassets")

@@ -21,7 +21,8 @@ var sourceExtensions = map[string]struct{}{
 }
 
 var swiftResourceRefRe = regexp.MustCompile(`\b(?:(?:UI|NS)?(?:Image|Color)|(?:NS)?DataAsset)\s*\(\s*resource\s*:\s*\.([A-Za-z_][A-Za-z0-9_]*)`)
-var ibAssetRefRe = regexp.MustCompile(`\b(?:image|selectedImage|highlightedImage|name)\s*=\s*"([A-Za-z0-9._ -]+)"`)
+var ibImageStateRefRe = regexp.MustCompile(`\b(?:image|selectedImage|highlightedImage)\s*=\s*"([A-Za-z0-9._ -]+)"`)
+var ibNamedAssetTagRefRe = regexp.MustCompile(`<(?:image|color)\b[^>]*\bname\s*=\s*"([A-Za-z0-9._ -]+)"`)
 var swiftNamedImageAssetRefRe = regexp.MustCompile(`\b(?:UI|NS)?Image\s*\(\s*(?:named|name)\s*:\s*"([A-Za-z0-9._ -]+)"`)
 var swiftNamedColorAssetRefRe = regexp.MustCompile(`\b(?:UI|NS)?Color\s*\(\s*(?:named|name)\s*:\s*"([A-Za-z0-9._ -]+)"`)
 var swiftNamedDataAssetRefRe = regexp.MustCompile(`\b(?:NS)?DataAsset\s*\(\s*(?:named|name)\s*:\s*"([A-Za-z0-9._ -]+)"`)
@@ -380,21 +381,31 @@ func collectUsedAssets(root string, include []string, exclude []string, discover
 }
 
 func extractIBAssetReferences(content string) []string {
-	matches := ibAssetRefRe.FindAllStringSubmatch(content, -1)
-	if len(matches) == 0 {
+	imageStateMatches := ibImageStateRefRe.FindAllStringSubmatch(content, -1)
+	namedTagMatches := ibNamedAssetTagRefRe.FindAllStringSubmatch(content, -1)
+	if len(imageStateMatches) == 0 && len(namedTagMatches) == 0 {
 		return nil
 	}
-	out := make([]string, 0, len(matches))
-	for _, m := range matches {
-		if len(m) < 2 {
-			continue
+	seen := make(map[string]struct{})
+	out := make([]string, 0, len(imageStateMatches)+len(namedTagMatches))
+	appendMatches := func(matches [][]string) {
+		for _, m := range matches {
+			if len(m) < 2 {
+				continue
+			}
+			name := strings.TrimSpace(m[1])
+			if name == "" {
+				continue
+			}
+			if _, exists := seen[name]; exists {
+				continue
+			}
+			seen[name] = struct{}{}
+			out = append(out, name)
 		}
-		name := strings.TrimSpace(m[1])
-		if name == "" {
-			continue
-		}
-		out = append(out, name)
 	}
+	appendMatches(imageStateMatches)
+	appendMatches(namedTagMatches)
 	return out
 }
 
