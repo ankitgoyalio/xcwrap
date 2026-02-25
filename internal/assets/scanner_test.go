@@ -1033,6 +1033,12 @@ func TestMatchesAny_GlobPatternMatchesExpectedPath(t *testing.T) {
 	}
 }
 
+func TestMatchesAny_GlobstarPatternMatchesNestedPath(t *testing.T) {
+	if !matchesAny("Sources/App/Features/Home/View.swift", []string{"Sources/**/*.swift"}) {
+		t.Fatalf("expected globstar pattern to match nested path")
+	}
+}
+
 func TestMatchesAny_DirectoryPatternMatchesSubtree(t *testing.T) {
 	if !matchesAny("ExternalLib/Assets.xcassets/icon.imageset", []string{"ExternalLib/"}) {
 		t.Fatalf("expected directory pattern to match subtree")

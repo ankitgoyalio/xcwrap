@@ -1,8 +1,8 @@
 package assets
 
 import (
+	"github.com/bmatcuk/doublestar/v4"
 	"io/fs"
-	"path"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -1011,7 +1011,7 @@ func matchesAny(candidatePath string, patterns []string) bool {
 			}
 			continue
 		}
-		ok, err := path.Match(p, normalized)
+		ok, err := doublestar.Match(p, normalized)
 		if err == nil && ok {
 			return true
 		}
