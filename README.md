@@ -19,6 +19,10 @@ Implemented command tree:
 
 `pruneCandidateCount` can be greater than `unusedCount` when the same asset name appears in multiple catalogs.
 
+For `xcwrap assets prune`:
+- when `dryRun = true`, `deleted` lists candidate paths that would be deleted with `--apply`
+- when `dryRun = false`, `deleted` lists paths that were actually deleted
+
 ### Example
 
 If both `ModuleA/Assets.xcassets/icon.imageset` and `ModuleB/Assets.xcassets/icon.imageset` are unused:
