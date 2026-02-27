@@ -1003,5 +1003,5 @@ func withEnvVar(base []string, key, value string) []string {
 			return updated
 		}
 	}
-	return append(base, prefix+value)
+	return append(append([]string{}, base...), prefix+value)
 }
